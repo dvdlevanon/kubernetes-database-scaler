@@ -59,12 +59,20 @@ func setupController() (*controller.DeploymentReconciler, error) {
 		return nil, err
 	}
 
-	controller := controller.DeploymentReconciler{Client: manager.GetClient()}
+	deploymentNamespace := viper.GetString("deployment-namespace")
+	deploymentName := viper.GetString("deployment-name")
+	deploymentColumnName := viper.GetString("deployment-column-name")
+	controller, err := controller.New(manager.GetClient(), deploymentNamespace, deploymentName, deploymentColumnName)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := controller.SetupWithManager(manager); err != nil {
 		return nil, err
 	}
 
-	return &controller, nil
+	go manager.Start(ctrl.SetupSignalHandler())
+	return controller, nil
 }
 
 func watch() error {
@@ -120,6 +128,10 @@ func init() {
 	rootCmd.Flags().StringArrayP("condition", "", make([]string, 0), "Only rows match this condition will be fetched, can be specified multiple times - ('column-name=value')")
 
 	rootCmd.Flags().IntP("check-interval", "", 10, "Periodic check interval in seconds")
+
+	rootCmd.Flags().StringP("deployment-namespace", "", "", "Deployment namespace to duplicate")
+	rootCmd.Flags().StringP("deployment-name", "", "", "Deployment name to duplicate")
+	rootCmd.Flags().StringP("deployment-column-name", "", "", "A column name to append to the copied deployment")
 
 	viper.BindPFlags(rootCmd.Flags())
 }
