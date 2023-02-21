@@ -5,6 +5,7 @@ import (
 	"dvdlevanon/kubernetes-database-scaler/pkg/tablewatch"
 	"fmt"
 	"os"
+	"strings"
 
 	_ "github.com/lib/pq"
 	"github.com/op/go-logging"
@@ -19,13 +20,17 @@ var cfgFile string
 
 var rootCmd = &cobra.Command{
 	Use:   "kubernetes-database-scaler",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Short: "Dynamically duplicate Kubernetes deployments according to data in the DB",
+	Long: `A Kubernetes controller that watch for a table in a Database
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+It creates a deployment per row in the DB, it useful for creating a pod per customer.
+Conditions can be add to the query in order to filter some rows.
+
+The original deployment used as a template when duplicating.
+--target-deployment-name is a name of a column in the DB, the value of this column appended to the new deployment name
+
+A list of environment variables can be passed to the new deployment, their values are the values from the DB	
+`,
 	Run: func(cmd *cobra.Command, args []string) {
 		err := watch()
 		if err != nil {
@@ -42,7 +47,7 @@ func setupWatcher(rows chan<- tablewatch.Row) error {
 	username := viper.GetString("database-username")
 	password := viper.GetString("database-password")
 	tableName := viper.GetString("table-name")
-	conditions := viper.GetStringSlice("condition")
+	conditions := splitEnvironmentVarialbe(viper.GetStringSlice("condition"))
 	watcher, err := tablewatch.New(driver, host, port, dbname, username, password, tableName, conditions)
 	if err != nil {
 		return err
@@ -53,8 +58,24 @@ func setupWatcher(rows chan<- tablewatch.Row) error {
 	return nil
 }
 
+func splitEnvironmentVarialbe(arr []string) []string {
+	if len(arr) == 1 && strings.Contains(arr[0], ",") {
+		// When using environment variable instead of command line args,
+		//	we support passing multiple values separated by a comma
+		//
+		return strings.Split(arr[0], ",")
+	}
+
+	return arr
+}
+
 func setupController() (*controller.DeploymentReconciler, error) {
-	manager, err := ctrl.NewManager(ctrl.GetConfigOrDie(), manager.Options{})
+	config, err := ctrl.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	manager, err := ctrl.NewManager(config, manager.Options{})
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +83,7 @@ func setupController() (*controller.DeploymentReconciler, error) {
 	originalDeploymentNamespace := viper.GetString("original-deployment-namespace")
 	originalDeploymentName := viper.GetString("original-deployment-name")
 	targetDeploymentName := viper.GetString("target-deployment-name")
-	environments := viper.GetStringSlice("environment")
+	environments := splitEnvironmentVarialbe(viper.GetStringSlice("environment"))
 	controller, err := controller.New(manager.GetClient(),
 		originalDeploymentNamespace, originalDeploymentName, targetDeploymentName, environments)
 	if err != nil {
@@ -151,6 +172,7 @@ func initConfig() {
 	}
 
 	viper.SetEnvPrefix("kubernetes_database_scaler")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err == nil {
