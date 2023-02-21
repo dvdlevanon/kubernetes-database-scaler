@@ -59,10 +59,12 @@ func setupController() (*controller.DeploymentReconciler, error) {
 		return nil, err
 	}
 
-	deploymentNamespace := viper.GetString("deployment-namespace")
-	deploymentName := viper.GetString("deployment-name")
-	deploymentColumnName := viper.GetString("deployment-column-name")
-	controller, err := controller.New(manager.GetClient(), deploymentNamespace, deploymentName, deploymentColumnName)
+	originalDeploymentNamespace := viper.GetString("original-deployment-namespace")
+	originalDeploymentName := viper.GetString("original-deployment-name")
+	targetDeploymentName := viper.GetString("target-deployment-name")
+	environments := viper.GetStringSlice("environment")
+	controller, err := controller.New(manager.GetClient(),
+		originalDeploymentNamespace, originalDeploymentName, targetDeploymentName, environments)
 	if err != nil {
 		return nil, err
 	}
@@ -124,14 +126,14 @@ func init() {
 	rootCmd.Flags().StringP("database-username", "", "", "Database username")
 	rootCmd.Flags().StringP("database-password", "", "", "Database password")
 
+	rootCmd.Flags().IntP("check-interval", "", 10, "Periodic check interval in seconds")
 	rootCmd.Flags().StringP("table-name", "t", "", "Database table to watch")
 	rootCmd.Flags().StringArrayP("condition", "", make([]string, 0), "Only rows match this condition will be fetched, can be specified multiple times - ('column-name=value')")
 
-	rootCmd.Flags().IntP("check-interval", "", 10, "Periodic check interval in seconds")
-
-	rootCmd.Flags().StringP("deployment-namespace", "", "", "Deployment namespace to duplicate")
-	rootCmd.Flags().StringP("deployment-name", "", "", "Deployment name to duplicate")
-	rootCmd.Flags().StringP("deployment-column-name", "", "", "A column name to append to the copied deployment")
+	rootCmd.Flags().StringP("original-deployment-namespace", "", "", "Deployment namespace to duplicate")
+	rootCmd.Flags().StringP("original-deployment-name", "", "", "Deployment name to duplicate")
+	rootCmd.Flags().StringP("target-deployment-name", "", "", "A column name to append to the copied deployment")
+	rootCmd.Flags().StringArrayP("environment", "", make([]string, 0), "Names of columns to add as environment variables")
 
 	viper.BindPFlags(rootCmd.Flags())
 }
