@@ -1,0 +1,25 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Docker login
+      env:
+        DOCKERHUB_USER: ${{secrets.DOCKERHUB_USER}}
+        DOCKERHUB_PASSWORD: ${{secrets.DOCKERHUB_PASSWORD}}
+      run: docker login -u $DOCKERHUB_USER -p $DOCKERHUB_PASSWORD
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag dvdlevanon/kubernetes-database-scaler:latest
+    - name: Push image
+      run: docker push dvdlevanon/kubernetes-database-scaler:latest
