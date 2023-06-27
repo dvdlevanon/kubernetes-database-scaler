@@ -14,15 +14,9 @@ type Row map[string]string
 var logger = logging.MustGetLogger("tablewatch")
 
 type Tablewatch struct {
-	driver    string
-	host      string
-	port      string
-	dbname    string
-	username  string
-	password  string
 	sqlQuery  string
 	sqlParams []any
-	conn      *sql.DB
+	dbConn    *dbConn
 }
 
 func getSqlCondition(conditions []string) (string, []any, error) {
@@ -59,7 +53,8 @@ func getSqlQuery(tableName string, conditions []string) (string, []any, error) {
 	}
 }
 
-func New(driver string, host string, port string, dbname string, username string, password string,
+func New(driver string, host string, port string, dbname string,
+	username string, password string, usernameFile string, passwordFile string,
 	tableName string, conditions []string) (*Tablewatch, error) {
 
 	sqlQuery, sqlParams, err := getSqlQuery(tableName, conditions)
@@ -67,57 +62,31 @@ func New(driver string, host string, port string, dbname string, username string
 		return nil, err
 	}
 
+	dbConn := &dbConn{
+		driver:       driver,
+		host:         host,
+		port:         port,
+		dbname:       dbname,
+		username:     username,
+		password:     password,
+		usernameFile: usernameFile,
+		passwordFile: passwordFile,
+	}
+
+	err = dbConn.openAndVerify()
+	if err != nil {
+		return nil, err
+	}
+
+	go dbConn.watchDbCredentials()
+
 	watcher := &Tablewatch{
-		driver:    driver,
-		host:      host,
-		port:      port,
-		dbname:    dbname,
-		username:  username,
-		password:  password,
+		dbConn:    dbConn,
 		sqlQuery:  sqlQuery,
 		sqlParams: sqlParams,
 	}
 
-	conn, err := watcher.openDbConnection()
-	if err != nil {
-		return nil, err
-	}
-
-	watcher.conn = conn
-	return watcher, watcher.verifyDbConnection()
-}
-
-func (w *Tablewatch) buildPostgresConnectionInfo() string {
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s",
-		w.host, w.port, w.username, w.password, w.dbname)
-}
-
-func (w *Tablewatch) openDbConnection() (*sql.DB, error) {
-	var sqlconn *sql.DB
-	var err error
-
-	switch w.driver {
-	case "postgres":
-		sqlconn, err = sql.Open("postgres", w.buildPostgresConnectionInfo())
-	default:
-		err = fmt.Errorf("unsupported database driver %s", w.driver)
-	}
-
-	if err != nil {
-		logger.Errorf("Error openning db connection %s", err)
-		return nil, err
-	}
-
-	return sqlconn, err
-}
-
-func (w *Tablewatch) verifyDbConnection() error {
-	if err := w.conn.Ping(); err != nil {
-		logger.Errorf("Error pinging db %s", err)
-		return err
-	}
-
-	return nil
+	return watcher, nil
 }
 
 func (w *Tablewatch) Watch(checkInterval int, output chan<- Row) {
@@ -133,7 +102,7 @@ func (w *Tablewatch) Watch(checkInterval int, output chan<- Row) {
 }
 
 func (w *Tablewatch) periodicCheck(output chan<- Row) error {
-	rows, err := w.conn.Query(w.sqlQuery, w.sqlParams...)
+	rows, err := w.dbConn.conn.Query(w.sqlQuery, w.sqlParams...)
 	if err != nil {
 		return err
 	}

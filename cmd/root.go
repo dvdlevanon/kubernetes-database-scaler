@@ -46,9 +46,12 @@ func setupWatcher(rows chan<- tablewatch.Row) error {
 	host := viper.GetString("database-host")
 	username := viper.GetString("database-username")
 	password := viper.GetString("database-password")
+	usernameFile := viper.GetString("database-username-file")
+	passwordFile := viper.GetString("database-password-file")
 	tableName := viper.GetString("table-name")
 	conditions := splitEnvironmentVarialbe(viper.GetStringSlice("condition"))
-	watcher, err := tablewatch.New(driver, host, port, dbname, username, password, tableName, conditions)
+	watcher, err := tablewatch.New(driver, host, port, dbname,
+		username, password, usernameFile, passwordFile, tableName, conditions)
 	if err != nil {
 		return err
 	}
@@ -146,6 +149,8 @@ func init() {
 	rootCmd.Flags().StringP("database-host", "", "", "Database hostname")
 	rootCmd.Flags().StringP("database-username", "", "", "Database username")
 	rootCmd.Flags().StringP("database-password", "", "", "Database password")
+	rootCmd.Flags().StringP("database-username-file", "", "", "A file containing a database username")
+	rootCmd.Flags().StringP("database-password-file", "", "", "A file containing a database password")
 
 	rootCmd.Flags().IntP("check-interval", "", 10, "Periodic check interval in seconds")
 	rootCmd.Flags().StringP("table-name", "t", "", "Database table to watch")
