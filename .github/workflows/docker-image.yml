@@ -11,13 +11,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+      
+    - name: Checkout
+      uses: actions/checkout@v3
+    
     - name: Docker login
       env:
         DOCKERHUB_USER: ${{secrets.DOCKERHUB_USER}}
         DOCKERHUB_PASSWORD: ${{secrets.DOCKERHUB_PASSWORD}}
       run: docker login -u $DOCKERHUB_USER -p $DOCKERHUB_PASSWORD
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag dvdlevanon/kubernetes-database-scaler:latest
-    - name: Push image
-      run: docker push dvdlevanon/kubernetes-database-scaler:latest
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+      
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v3
+      with:
+        images: dvdlevanon/kubernetes-database-scaler
+        tags: |
+          type=sha
+          type=ref,event=branch
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=edge
+          
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v3
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}

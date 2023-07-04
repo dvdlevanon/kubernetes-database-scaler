@@ -1,23 +1,33 @@
 
-# Brief
+# Kubernetes Database Scaler
 
-A Kubernetes controller that watch for a table in a Database
+Kubernetes Database Scaler is a custom Kubernetes controller. It's designed to automate the creation of Kubernetes deployments based on the rows in a specified database table. This tool is valuable for creating isolated environments (pods) per customer for systems with multi-tenant architecture. By dynamically generating deployments based on database rows, you can scale out your Kubernetes deployments in a very efficient and controlled manner.
 
-It creates a deployment per row in the DB, it useful for creating a pod per customer.
-Conditions can be add to the query in order to filter some rows.
+Each row in the database table corresponds to a Kubernetes deployment. You can even add conditions to query specific rows, allowing for finer control over which rows translate into deployments. This is useful when only a subset of rows are needed to create deployments.
 
-The original deployment used as a template when duplicating.
---target-deployment-name is a name of a column in the DB, the value of this column appended to the new deployment name
+The deployments are not created from scratch; instead, an existing deployment is duplicated and customized for each row. The customization includes appending a value from a specific database column to the new deployment's name, which aids in the identification of the deployments. 
 
-A list of environment variables can be passed to the new deployment, their values are the values from the DB
+In addition, you can specify database columns whose values will be added as environment variables to the new deployments. This can be used to pass specific configuration or runtime data from your database to the Kubernetes deployments.
 
-# Build
+## Building
 
-`make build`
+To build the Kubernetes Database Scaler, run the following command:
 
-# Run
+```bash
+make build
+```
 
-`./build/kubernetes-database-scaler --help`
+## Running
+
+To run the Kubernetes Database Scaler, execute:
+
+```bash
+./build/kubernetes-database-scaler
+```
+
+## Usage
+
+Here is the usage information for Kubernetes Database Scaler:
 
 ```
 Usage:
@@ -42,12 +52,19 @@ Flags:
 
 ```
 
-# Docker
+## Building Docker Image
 
-Build and run a docker image using those commands:
-```
+To build the Docker image for Kubernetes Database Scaler, use the following command:
+
+```bash
 make docker
+```
 
+## Running Docker Container
+
+To run the Kubernetes Database Scaler as a Docker container, execute:
+
+```bash
 docker run \
 	-e "KUBERNETES_DATABASE_SCALER_DATABASE_DRIVER=<db_driver>" \
   -e "KUBERNETES_DATABASE_SCALER_DATABASE_NAME=<db_name>" \
