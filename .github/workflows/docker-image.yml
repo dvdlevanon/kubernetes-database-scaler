@@ -84,6 +84,6 @@ jobs:
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
-        files: './kubernetes-database-scaler/kubernetes-database-scaler-${{ steps.get_version.outputs.VERSION }}-x86_64.tar.gz'
+        files: './kubernetes-database-scaler-${{ steps.get_version.outputs.VERSION }}-x86_64.tar.gz'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
