@@ -2,19 +2,36 @@ name: Docker Image CI
 
 on:
   push:
-    branches: [ "main" ]
+    tags:
+      - 'v*'
 
 jobs:
 
   build:
-
     runs-on: ubuntu-latest
-
     steps:
       
     - name: Checkout
       uses: actions/checkout@v3
     
+    - name: Build project
+      run: make build
+    
+    - name: Get the version
+      id: get_version
+      run: echo ::set-output name=VERSION::${GITHUB_REF#refs/tags/}
+    
+    - name: Archive production artifacts
+      run: |
+        cp ./build/kubernetes-database-scaler ./kubernetes-database-scaler-${{ steps.get_version.outputs.VERSION }}-x86_64
+        tar -zcvf kubernetes-database-scaler-${{ steps.get_version.outputs.VERSION }}-x86_64.tar.gz ./kubernetes-database-scaler-${{ steps.get_version.outputs.VERSION }}-x86_64
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: kubernetes-database-scaler
+        path: ./kubernetes-database-scaler-${{ steps.get_version.outputs.VERSION }}-x86_64.tar.gz
+
     - name: Docker login
       env:
         DOCKERHUB_USER: ${{secrets.DOCKERHUB_USER}}
@@ -45,3 +62,27 @@ jobs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      
+    - name: Checkout
+      uses: actions/checkout@v3
+    
+    - name: Get the version
+      id: get_version
+      run: echo ::set-output name=VERSION::${GITHUB_REF#refs/tags/}
+    
+    - name: Download artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: kubernetes-database-scaler
+    
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: './kubernetes-database-scaler/kubernetes-database-scaler-${{ steps.get_version.outputs.VERSION }}-x86_64.tar.gz'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
