@@ -30,7 +30,7 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: kubernetes-database-scaler
+        name: kubernetes-database-scaler-${{ steps.get_version.outputs.VERSION }}-x86_64.tar.gz
         path: ./kubernetes-database-scaler-${{ steps.get_version.outputs.VERSION }}-x86_64.tar.gz
 
     - name: Docker login
@@ -79,7 +79,7 @@ jobs:
     - name: Download artifacts
       uses: actions/download-artifact@v2
       with:
-        name: kubernetes-database-scaler
+        name: kubernetes-database-scaler-${{ steps.get_version.outputs.VERSION }}-x86_64.tar.gz
     
     - name: Release
       uses: softprops/action-gh-release@v1
