@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
@@ -128,15 +129,27 @@ func (d *dbConn) watchDbCredentials() {
 	}
 
 	if d.passwordFile != "" {
-		if err := watcher.Add(d.passwordFile); err != nil {
-			logger.Errorf("Unable to watch password file %s %s", d.passwordFile, err)
+		actualPasswordFile, err := filepath.EvalSymlinks(d.passwordFile)
+		if err != nil {
+			logger.Errorf("Error getting actual password file %s %s", d.passwordFile, err)
+		}
+
+		logger.Infof("Watching password file %s", actualPasswordFile)
+		if err := watcher.Add(actualPasswordFile); err != nil {
+			logger.Errorf("Unable to watch password file %s %s", actualPasswordFile, err)
 			return
 		}
 	}
 
 	if d.usernameFile != "" {
-		if err := watcher.Add(d.usernameFile); err != nil {
-			logger.Errorf("Unable to watch username file %s %s", d.usernameFile, err)
+		actualUsernameFile, err := filepath.EvalSymlinks(d.usernameFile)
+		if err != nil {
+			logger.Errorf("Error getting actual username file %s %s", d.usernameFile, err)
+		}
+
+		logger.Infof("Watching password file %s", actualUsernameFile)
+		if err := watcher.Add(actualUsernameFile); err != nil {
+			logger.Errorf("Unable to watch username file %s %s", actualUsernameFile, err)
 			return
 		}
 	}
