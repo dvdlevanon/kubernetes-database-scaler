@@ -72,6 +72,7 @@ docker run \
   -e "KUBERNETES_DATABASE_SCALER_DATABASE_HOST=<db_hostname>" \
   -e "KUBERNETES_DATABASE_SCALER_DATABASE_USERNAME=<db_username>" \
   -e "KUBERNETES_DATABASE_SCALER_DATABASE_PASSWORD=<db_password>" \
+  -e "KUBERNETES_DATABASE_SCALER_CHECK_INTERVAL=<check_interval_seconds>" \
   -e "KUBERNETES_DATABASE_SCALER_TABLE_NAME=<db_tablename>" \
   -e "KUBERNETES_DATABASE_SCALER_CONDITION=<column_name_1>=<value1>,<column_name_2>=<value2>" \
   -e "KUBERNETES_DATABASE_SCALER_ORIGINAL_DEPLOYMENT_NAMESPACE=<kubernetes_namespace>" \

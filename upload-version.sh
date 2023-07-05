@@ -8,5 +8,5 @@ new_version="${base}.${new_minor}"
 
 echo "Creating new version: $new_version"
 
-git tag $new_version
+git tag "$new_version"
 git push --tags
