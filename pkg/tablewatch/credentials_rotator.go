@@ -147,7 +147,7 @@ func (d *dbConn) watchDbCredentials() {
 			logger.Errorf("Error getting actual username file %s %s", d.usernameFile, err)
 		}
 
-		logger.Infof("Watching password file %s", actualUsernameFile)
+		logger.Infof("Watching username file %s", actualUsernameFile)
 		if err := watcher.Add(actualUsernameFile); err != nil {
 			logger.Errorf("Unable to watch username file %s %s", actualUsernameFile, err)
 			return
