@@ -154,9 +154,9 @@ func (d *dbConn) watchDbCredentials() {
 			shouldReload := event.Has(fsnotify.Write)
 
 			if event.Has(fsnotify.Remove) {
-				logger.Infof("DB credentials file removed:", event.Name)
+				logger.Infof("DB credentials file removed: %s", event.Name)
 				if err := watcher.Remove(event.Name); err != nil {
-					logger.Warningf("Unable to remove %s from watcher %s", event.Name, err)
+					logger.Warningf("Unable to remove %s from watcher %s - current list: [%s]", event.Name, err, watcher.WatchList())
 				}
 
 				err := watcher.Add(event.Name)
@@ -170,7 +170,7 @@ func (d *dbConn) watchDbCredentials() {
 			}
 
 			if shouldReload {
-				logger.Infof("Relading DB credentials file:", event.Name)
+				logger.Infof("Relading DB credentials file: %s", event.Name)
 				if err := d.openAndVerify(); err != nil {
 					logger.Errorf("Error openning db connection during rotation %s", err)
 				}
