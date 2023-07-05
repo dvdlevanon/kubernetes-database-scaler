@@ -12,7 +12,7 @@ ADD cmd ./cmd
 
 RUN go build -o /kubernetes-database-scaler
 
-FROM gcr.io/distroless/base-debian10
+FROM alpine:3
 
 WORKDIR /
 
