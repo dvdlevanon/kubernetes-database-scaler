@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -129,27 +129,15 @@ func (d *dbConn) watchDbCredentials() {
 	}
 
 	if d.passwordFile != "" {
-		actualPasswordFile, err := filepath.EvalSymlinks(d.passwordFile)
-		if err != nil {
-			logger.Errorf("Error getting actual password file %s %s", d.passwordFile, err)
-		}
-
-		logger.Infof("Watching password file %s", actualPasswordFile)
-		if err := watcher.Add(actualPasswordFile); err != nil {
-			logger.Errorf("Unable to watch password file %s %s", actualPasswordFile, err)
+		if err := watcher.Add(d.passwordFile); err != nil {
+			logger.Errorf("Unable to watch password file %s %s", d.passwordFile, err)
 			return
 		}
 	}
 
 	if d.usernameFile != "" {
-		actualUsernameFile, err := filepath.EvalSymlinks(d.usernameFile)
-		if err != nil {
-			logger.Errorf("Error getting actual username file %s %s", d.usernameFile, err)
-		}
-
-		logger.Infof("Watching username file %s", actualUsernameFile)
-		if err := watcher.Add(actualUsernameFile); err != nil {
-			logger.Errorf("Unable to watch username file %s %s", actualUsernameFile, err)
+		if err := watcher.Add(d.usernameFile); err != nil {
+			logger.Errorf("Unable to watch username file %s %s", d.usernameFile, err)
 			return
 		}
 	}
@@ -162,8 +150,27 @@ func (d *dbConn) watchDbCredentials() {
 			if !ok {
 				return
 			}
-			if event.Op&fsnotify.Write == fsnotify.Write {
-				logger.Infof("DB credentials file modified:", event.Name)
+
+			shouldReload := event.Has(fsnotify.Write)
+
+			if event.Has(fsnotify.Remove) {
+				logger.Infof("DB credentials file removed:", event.Name)
+				if err := watcher.Remove(event.Name); err != nil {
+					logger.Warningf("Unable to remove %s from watcher %s", event.Name, err)
+				}
+
+				err := watcher.Add(event.Name)
+				for err != nil {
+					logger.Errorf("Unable to watch file %s %s", event.Name, err)
+					time.Sleep(time.Second)
+					err = watcher.Add(event.Name)
+				}
+
+				shouldReload = true
+			}
+
+			if shouldReload {
+				logger.Infof("Relading DB credentials file:", event.Name)
 				if err := d.openAndVerify(); err != nil {
 					logger.Errorf("Error openning db connection during rotation %s", err)
 				}
