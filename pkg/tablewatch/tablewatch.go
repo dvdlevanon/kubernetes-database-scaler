@@ -102,6 +102,8 @@ func (w *Tablewatch) Watch(checkInterval int, output chan<- Row) {
 }
 
 func (w *Tablewatch) periodicCheck(output chan<- Row) error {
+	logger.Debugf("Periodic check DB table")
+
 	rows, err := w.dbConn.conn.Query(w.sqlQuery, w.sqlParams...)
 	if err != nil {
 		return err

@@ -30,6 +30,8 @@ func (d *dbConn) getUsername() (string, error) {
 		return "", nil
 	}
 
+	logger.Debugf("Reading DB username from file %s", d.usernameFile)
+
 	usernameBytes, err := os.ReadFile(d.usernameFile)
 	if err != nil {
 		return "", err
@@ -46,6 +48,8 @@ func (d *dbConn) getPassword() (string, error) {
 	if d.passwordFile == "" {
 		return "", nil
 	}
+
+	logger.Debugf("Reading DB password from file %s", d.passwordFile)
 
 	passwordBytes, err := os.ReadFile(d.passwordFile)
 	if err != nil {
@@ -136,6 +140,8 @@ func (d *dbConn) watchDbCredentials() {
 			return
 		}
 	}
+
+	logger.Debugf("Start watching for DB credential files (user: %s) (pass: %s)", d.usernameFile, d.passwordFile)
 
 	for {
 		select {
