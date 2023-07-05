@@ -1,4 +1,4 @@
-FROM golang:1.20-rc-bullseye AS build
+FROM golang:1.21rc2-alpine3.18 AS builder
 
 WORKDIR /app
 
@@ -16,8 +16,6 @@ FROM alpine:3
 
 WORKDIR /
 
-COPY --from=build /kubernetes-database-scaler /kubernetes-database-scaler
-
-USER nonroot:nonroot
+COPY --from=builder /kubernetes-database-scaler /kubernetes-database-scaler
 
 ENTRYPOINT ["/kubernetes-database-scaler"]
