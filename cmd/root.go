@@ -86,9 +86,10 @@ func setupController() (*controller.DeploymentReconciler, error) {
 	originalDeploymentNamespace := viper.GetString("original-deployment-namespace")
 	originalDeploymentName := viper.GetString("original-deployment-name")
 	targetDeploymentName := viper.GetString("target-deployment-name")
+	originalVpaName := viper.GetString("original-vpa-name")
 	environments := splitEnvironmentVarialbe(viper.GetStringSlice("environment"))
 	controller, err := controller.New(manager.GetClient(),
-		originalDeploymentNamespace, originalDeploymentName, targetDeploymentName, environments)
+		originalDeploymentNamespace, originalDeploymentName, targetDeploymentName, originalVpaName, environments)
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +161,7 @@ func init() {
 	rootCmd.Flags().StringP("original-deployment-name", "", "", "Deployment name to duplicate")
 	rootCmd.Flags().StringP("target-deployment-name", "", "", "A column name to append to the copied deployment")
 	rootCmd.Flags().StringArrayP("environment", "", make([]string, 0), "Names of columns to add as environment variables")
+	rootCmd.Flags().StringP("original-vpa-name", "", "", "A vertical pod autoscaler to duplicate")
 
 	viper.BindPFlags(rootCmd.Flags())
 }

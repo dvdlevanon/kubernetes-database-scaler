@@ -12,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -19,6 +20,7 @@ import (
 
 const DEPLOYMENT_ID_ANNOTATION_NAME = "kubernetes-database-scaler/deployment-id"
 const ORIGINAL_OBSERVED_GENERATION_ANNOTATION_NAME = "kubernetes-database-scaler/original-observed-generation"
+const VPA_ID_ANNOTATION_NAME = "kubernetes-database-scaler/vpa-id"
 
 var logger = logging.MustGetLogger("controller")
 
@@ -27,6 +29,7 @@ type DeploymentReconciler struct {
 	deploymentNamespace       string
 	deploymentName            string
 	deploymentColumnName      string
+	vpaName                   string
 	environmentsDefinitionMap map[string]string
 }
 
@@ -45,7 +48,7 @@ func buildEnvironmentDefinitionMap(environments []string) (map[string]string, er
 }
 
 func New(client client.Client, deploymentNamespace string, deploymentName string,
-	deploymentColumnName string, environments []string) (*DeploymentReconciler, error) {
+	deploymentColumnName string, vpaName string, environments []string) (*DeploymentReconciler, error) {
 
 	if deploymentName == "" {
 		return nil, fmt.Errorf("deployment name is empty")
@@ -69,6 +72,7 @@ func New(client client.Client, deploymentNamespace string, deploymentName string
 		deploymentName:            deploymentName,
 		deploymentNamespace:       deploymentNamespace,
 		deploymentColumnName:      deploymentColumnName,
+		vpaName:                   vpaName,
 		environmentsDefinitionMap: environmentsDefinitionMap,
 	}, nil
 }
@@ -176,6 +180,25 @@ func (r *DeploymentReconciler) buildDeploymentName(deploymentSuffix string) stri
 	return fmt.Sprintf("%s-%s", r.deploymentName, deploymentSuffix)
 }
 
+func (r *DeploymentReconciler) buildVpaName(vpaSuffix string) string {
+	return fmt.Sprintf("%s-%s", r.vpaName, vpaSuffix)
+}
+
+func (r *DeploymentReconciler) getExistingVpa() (*vpa_types.VerticalPodAutoscaler, error) {
+	key := types.NamespacedName{
+		Namespace: r.deploymentNamespace,
+		Name:      r.vpaName,
+	}
+
+	vpa := vpa_types.VerticalPodAutoscaler{}
+	if err := r.Get(context.Background(), key, &vpa); err != nil {
+		logger.Errorf("Unable to get original vpa %v %s", key, err)
+		return nil, err
+	}
+
+	return &vpa, nil
+}
+
 func (r *DeploymentReconciler) getExistingDeployment() (*appsv1.Deployment, error) {
 	key := types.NamespacedName{
 		Namespace: r.deploymentNamespace,
@@ -209,6 +232,21 @@ func (r *DeploymentReconciler) replaceOrAddEnv(envs []corev1.EnvVar, name string
 	return newEnvs
 }
 
+func (r *DeploymentReconciler) duplicateVpa(orig *vpa_types.VerticalPodAutoscaler, nameSuffix string) *vpa_types.VerticalPodAutoscaler {
+	new := orig.DeepCopy()
+	new.ObjectMeta = v1.ObjectMeta{
+		Name:                       r.buildVpaName(nameSuffix),
+		Namespace:                  orig.ObjectMeta.Namespace,
+		Annotations:                orig.ObjectMeta.Annotations,
+		Labels:                     orig.ObjectMeta.Labels,
+		DeletionGracePeriodSeconds: orig.ObjectMeta.DeletionGracePeriodSeconds,
+	}
+
+	new.ObjectMeta.Annotations[VPA_ID_ANNOTATION_NAME] = nameSuffix
+	new.Spec.TargetRef.Name = r.buildDeploymentName(nameSuffix)
+	return new
+}
+
 func (r *DeploymentReconciler) duplicateDeployment(orig *appsv1.Deployment,
 	nameSuffix string, environmentsMap map[string]string) *appsv1.Deployment {
 	new := orig.DeepCopy()
@@ -236,7 +274,6 @@ func (r *DeploymentReconciler) duplicateDeployment(orig *appsv1.Deployment,
 
 func (r *DeploymentReconciler) createDeployment(nameSuffix string, environmentsMap map[string]string) error {
 	logger.Infof("Creating a new deployment with suffix %v", nameSuffix)
-
 	orig, err := r.getExistingDeployment()
 	if err != nil {
 		return err
@@ -249,6 +286,45 @@ func (r *DeploymentReconciler) createDeployment(nameSuffix string, environmentsM
 	}
 
 	return nil
+}
+
+func (r *DeploymentReconciler) createVpa(nameSuffix string) {
+	if r.vpaName == "" {
+		return
+	}
+
+	logger.Infof("Creating a new vpa with suffix %v", nameSuffix)
+
+	orig, err := r.getExistingVpa()
+	if err != nil {
+		return
+	}
+
+	new := r.duplicateVpa(orig, nameSuffix)
+	if err := r.Create(context.Background(), new); err != nil {
+		logger.Errorf("Unable to create a new vpa for %s %s", nameSuffix, err)
+		return
+	}
+}
+
+func (r *DeploymentReconciler) isVpaExists(vpaSuffix string) (bool, error) {
+	key := types.NamespacedName{
+		Namespace: r.deploymentNamespace,
+		Name:      r.buildVpaName(vpaSuffix),
+	}
+
+	vpa := vpa_types.VerticalPodAutoscaler{}
+	err := r.Get(context.Background(), key, &vpa)
+
+	if err == nil {
+		return true, nil
+	}
+
+	if apierrors.IsNotFound(err) {
+		return false, nil
+	}
+
+	return false, err
 }
 
 func (r *DeploymentReconciler) isDeploymentExists(deploymentSuffix string) (bool, error) {
@@ -276,6 +352,11 @@ func (r *DeploymentReconciler) OnRow(row tablewatch.Row) {
 	if !ok {
 		logger.Warningf("Column %s not found on row %v", r.deploymentColumnName, row)
 		return
+	}
+
+	vapExists, _ := r.isVpaExists(deploymentSuffix)
+	if !vapExists {
+		r.createVpa(deploymentSuffix)
 	}
 
 	exists, err := r.isDeploymentExists(deploymentSuffix)
