@@ -225,6 +225,18 @@ func (r *DeploymentReconciler) duplicateDeployment(orig *appsv1.Deployment,
 		fmt.Sprintf("%d", orig.Status.ObservedGeneration)
 	new.ObjectMeta.Annotations[DEPLOYMENT_ID_ANNOTATION_NAME] = nameSuffix
 
+	for key, value := range new.Spec.Selector.MatchLabels {
+		if key == "name" && value == orig.ObjectMeta.Name {
+			new.Spec.Selector.MatchLabels[value] = r.buildDeploymentName(nameSuffix)
+		}
+	}
+
+	for key, value := range new.Spec.Template.ObjectMeta.Labels {
+		if key == "name" && value == orig.ObjectMeta.Name {
+			new.Spec.Template.ObjectMeta.Labels[value] = r.buildDeploymentName(nameSuffix)
+		}
+	}
+
 	for i := range new.Spec.Template.Spec.Containers {
 		for name, value := range environmentsMap {
 			new.Spec.Template.Spec.Containers[i].Env = r.replaceOrAddEnv(new.Spec.Template.Spec.Containers[i].Env, name, value)
