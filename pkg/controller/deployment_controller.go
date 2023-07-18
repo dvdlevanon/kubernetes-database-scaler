@@ -140,7 +140,17 @@ func (r *DeploymentReconciler) originalDeploymentChanged(ctx context.Context, or
 	return nil
 }
 
-func (r *DeploymentReconciler) originalDeploymentDeleted(ctx context.Context) error {
+func (r *DeploymentReconciler) originalDeploymentDeleted(ctx context.Context) {
+	if err := r.removeAllDeployments(ctx); err != nil {
+		logger.Warningf("Unable to remove all deployments %s", err)
+	}
+
+	if err := r.removeAllVpas(ctx); err != nil {
+		logger.Warningf("Unable to remove all vpas %s", err)
+	}
+}
+
+func (r *DeploymentReconciler) removeAllDeployments(ctx context.Context) error {
 	deployments, err := r.listDuplicatedDeployments(ctx)
 	if err != nil {
 		return err
@@ -170,6 +180,42 @@ func (r *DeploymentReconciler) listDuplicatedDeployments(ctx context.Context) ([
 	for _, deployment := range deployments.Items {
 		if _, ok := deployment.Annotations[DEPLOYMENT_ID_ANNOTATION_NAME]; ok {
 			result = append(result, deployment)
+		}
+	}
+
+	return result, nil
+}
+
+func (r *DeploymentReconciler) removeAllVpas(ctx context.Context) error {
+	vpas, err := r.listDuplicatedVpas(ctx)
+	if err != nil {
+		return err
+	}
+
+	logger.Infof("Original deployment deleted, removing %d duplicated vpas", len(vpas))
+
+	for _, vpa := range vpas {
+		if err := r.Delete(ctx, &vpa); err != nil {
+			logger.Errorf("Error removing vpa %s", err)
+			continue
+		}
+	}
+
+	return nil
+}
+
+func (r *DeploymentReconciler) listDuplicatedVpas(ctx context.Context) ([]vpa_types.VerticalPodAutoscaler, error) {
+	vpas := vpa_types.VerticalPodAutoscalerList{}
+	err := r.List(ctx, &vpas, client.InNamespace(r.deploymentNamespace))
+	if err != nil {
+		logger.Errorf("Error getting duplicated vpas %s", err)
+		return nil, err
+	}
+
+	result := make([]vpa_types.VerticalPodAutoscaler, 0)
+	for _, vpa := range vpas.Items {
+		if _, ok := vpa.Annotations[VPA_ID_ANNOTATION_NAME]; ok {
+			result = append(result, vpa)
 		}
 	}
 
@@ -288,23 +334,25 @@ func (r *DeploymentReconciler) createDeployment(nameSuffix string, environmentsM
 	return nil
 }
 
-func (r *DeploymentReconciler) createVpa(nameSuffix string) {
+func (r *DeploymentReconciler) createVpa(nameSuffix string) error {
 	if r.vpaName == "" {
-		return
+		return nil
 	}
 
 	logger.Infof("Creating a new vpa with suffix %v", nameSuffix)
 
 	orig, err := r.getExistingVpa()
 	if err != nil {
-		return
+		return err
 	}
 
 	new := r.duplicateVpa(orig, nameSuffix)
 	if err := r.Create(context.Background(), new); err != nil {
 		logger.Errorf("Unable to create a new vpa for %s %s", nameSuffix, err)
-		return
+		return err
 	}
+
+	return nil
 }
 
 func (r *DeploymentReconciler) isVpaExists(vpaSuffix string) (bool, error) {
@@ -356,7 +404,9 @@ func (r *DeploymentReconciler) OnRow(row tablewatch.Row) {
 
 	vapExists, _ := r.isVpaExists(deploymentSuffix)
 	if !vapExists {
-		r.createVpa(deploymentSuffix)
+		if err := r.createVpa(deploymentSuffix); err != nil {
+			logger.Errorf("Unable to create VPA %s", err)
+		}
 	}
 
 	exists, err := r.isDeploymentExists(deploymentSuffix)
