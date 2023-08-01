@@ -12,7 +12,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -20,7 +19,6 @@ import (
 
 const DEPLOYMENT_ID_ANNOTATION_NAME = "kubernetes-database-scaler/deployment-id"
 const ORIGINAL_OBSERVED_GENERATION_ANNOTATION_NAME = "kubernetes-database-scaler/original-observed-generation"
-const VPA_ID_ANNOTATION_NAME = "kubernetes-database-scaler/vpa-id"
 
 var logger = logging.MustGetLogger("controller")
 
@@ -48,7 +46,7 @@ func buildEnvironmentDefinitionMap(environments []string) (map[string]string, er
 }
 
 func New(client client.Client, deploymentNamespace string, deploymentName string,
-	deploymentColumnName string, vpaName string, environments []string) (*DeploymentReconciler, error) {
+	deploymentColumnName string, environments []string) (*DeploymentReconciler, error) {
 
 	if deploymentName == "" {
 		return nil, fmt.Errorf("deployment name is empty")
@@ -72,7 +70,6 @@ func New(client client.Client, deploymentNamespace string, deploymentName string
 		deploymentName:            deploymentName,
 		deploymentNamespace:       deploymentNamespace,
 		deploymentColumnName:      deploymentColumnName,
-		vpaName:                   vpaName,
 		environmentsDefinitionMap: environmentsDefinitionMap,
 	}, nil
 }
@@ -80,10 +77,14 @@ func New(client client.Client, deploymentNamespace string, deploymentName string
 func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
-	if req.Namespace != r.deploymentNamespace || req.Name != r.deploymentName {
-		return ctrl.Result{}, nil
+	if req.Namespace == r.deploymentNamespace && req.Name == r.deploymentName {
+		r.reconcileDeployment(ctx, req)
 	}
 
+	return ctrl.Result{}, nil
+}
+
+func (r *DeploymentReconciler) reconcileDeployment(ctx context.Context, req ctrl.Request) {
 	deployment := appsv1.Deployment{}
 	err := r.Get(ctx, req.NamespacedName, &deployment)
 	if err == nil {
@@ -93,8 +94,6 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	} else {
 		logger.Errorf("Unable to get deployment upon reconciling %s", err)
 	}
-
-	return ctrl.Result{}, nil
 }
 
 func (r *DeploymentReconciler) originalDeploymentChanged(ctx context.Context, original appsv1.Deployment) error {
@@ -141,19 +140,9 @@ func (r *DeploymentReconciler) originalDeploymentChanged(ctx context.Context, or
 }
 
 func (r *DeploymentReconciler) originalDeploymentDeleted(ctx context.Context) {
-	if err := r.removeAllDeployments(ctx); err != nil {
-		logger.Warningf("Unable to remove all deployments %s", err)
-	}
-
-	if err := r.removeAllVpas(ctx); err != nil {
-		logger.Warningf("Unable to remove all vpas %s", err)
-	}
-}
-
-func (r *DeploymentReconciler) removeAllDeployments(ctx context.Context) error {
 	deployments, err := r.listDuplicatedDeployments(ctx)
 	if err != nil {
-		return err
+		return
 	}
 
 	logger.Infof("Original deployment deleted, removing %d duplicated deployments", len(deployments))
@@ -164,8 +153,6 @@ func (r *DeploymentReconciler) removeAllDeployments(ctx context.Context) error {
 			continue
 		}
 	}
-
-	return nil
 }
 
 func (r *DeploymentReconciler) listDuplicatedDeployments(ctx context.Context) ([]appsv1.Deployment, error) {
@@ -186,63 +173,8 @@ func (r *DeploymentReconciler) listDuplicatedDeployments(ctx context.Context) ([
 	return result, nil
 }
 
-func (r *DeploymentReconciler) removeAllVpas(ctx context.Context) error {
-	vpas, err := r.listDuplicatedVpas(ctx)
-	if err != nil {
-		return err
-	}
-
-	logger.Infof("Original deployment deleted, removing %d duplicated vpas", len(vpas))
-
-	for _, vpa := range vpas {
-		if err := r.Delete(ctx, &vpa); err != nil {
-			logger.Errorf("Error removing vpa %s", err)
-			continue
-		}
-	}
-
-	return nil
-}
-
-func (r *DeploymentReconciler) listDuplicatedVpas(ctx context.Context) ([]vpa_types.VerticalPodAutoscaler, error) {
-	vpas := vpa_types.VerticalPodAutoscalerList{}
-	err := r.List(ctx, &vpas, client.InNamespace(r.deploymentNamespace))
-	if err != nil {
-		logger.Errorf("Error getting duplicated vpas %s", err)
-		return nil, err
-	}
-
-	result := make([]vpa_types.VerticalPodAutoscaler, 0)
-	for _, vpa := range vpas.Items {
-		if _, ok := vpa.Annotations[VPA_ID_ANNOTATION_NAME]; ok {
-			result = append(result, vpa)
-		}
-	}
-
-	return result, nil
-}
-
-func (r *DeploymentReconciler) buildDeploymentName(deploymentSuffix string) string {
-	return fmt.Sprintf("%s-%s", r.deploymentName, deploymentSuffix)
-}
-
-func (r *DeploymentReconciler) buildVpaName(vpaSuffix string) string {
-	return fmt.Sprintf("%s-%s", r.vpaName, vpaSuffix)
-}
-
-func (r *DeploymentReconciler) getExistingVpa() (*vpa_types.VerticalPodAutoscaler, error) {
-	key := types.NamespacedName{
-		Namespace: r.deploymentNamespace,
-		Name:      r.vpaName,
-	}
-
-	vpa := vpa_types.VerticalPodAutoscaler{}
-	if err := r.Get(context.Background(), key, &vpa); err != nil {
-		logger.Errorf("Unable to get original vpa %v %s", key, err)
-		return nil, err
-	}
-
-	return &vpa, nil
+func buildDeploymentName(deploymentName string, deploymentSuffix string) string {
+	return fmt.Sprintf("%s-%s", deploymentName, deploymentSuffix)
 }
 
 func (r *DeploymentReconciler) getExistingDeployment() (*appsv1.Deployment, error) {
@@ -278,27 +210,12 @@ func (r *DeploymentReconciler) replaceOrAddEnv(envs []corev1.EnvVar, name string
 	return newEnvs
 }
 
-func (r *DeploymentReconciler) duplicateVpa(orig *vpa_types.VerticalPodAutoscaler, nameSuffix string) *vpa_types.VerticalPodAutoscaler {
-	new := orig.DeepCopy()
-	new.ObjectMeta = v1.ObjectMeta{
-		Name:                       r.buildVpaName(nameSuffix),
-		Namespace:                  orig.ObjectMeta.Namespace,
-		Annotations:                orig.ObjectMeta.Annotations,
-		Labels:                     orig.ObjectMeta.Labels,
-		DeletionGracePeriodSeconds: orig.ObjectMeta.DeletionGracePeriodSeconds,
-	}
-
-	new.ObjectMeta.Annotations[VPA_ID_ANNOTATION_NAME] = nameSuffix
-	new.Spec.TargetRef.Name = r.buildDeploymentName(nameSuffix)
-	return new
-}
-
 func (r *DeploymentReconciler) duplicateDeployment(orig *appsv1.Deployment,
 	nameSuffix string, environmentsMap map[string]string) *appsv1.Deployment {
 	new := orig.DeepCopy()
 	new.Status = appsv1.DeploymentStatus{}
 	new.ObjectMeta = v1.ObjectMeta{
-		Name:                       r.buildDeploymentName(nameSuffix),
+		Name:                       buildDeploymentName(r.deploymentName, nameSuffix),
 		Namespace:                  orig.ObjectMeta.Namespace,
 		Annotations:                orig.ObjectMeta.Annotations,
 		Labels:                     orig.ObjectMeta.Labels,
@@ -334,51 +251,10 @@ func (r *DeploymentReconciler) createDeployment(nameSuffix string, environmentsM
 	return nil
 }
 
-func (r *DeploymentReconciler) createVpa(nameSuffix string) error {
-	if r.vpaName == "" {
-		return nil
-	}
-
-	logger.Infof("Creating a new vpa with suffix %v", nameSuffix)
-
-	orig, err := r.getExistingVpa()
-	if err != nil {
-		return err
-	}
-
-	new := r.duplicateVpa(orig, nameSuffix)
-	if err := r.Create(context.Background(), new); err != nil {
-		logger.Errorf("Unable to create a new vpa for %s %s", nameSuffix, err)
-		return err
-	}
-
-	return nil
-}
-
-func (r *DeploymentReconciler) isVpaExists(vpaSuffix string) (bool, error) {
-	key := types.NamespacedName{
-		Namespace: r.deploymentNamespace,
-		Name:      r.buildVpaName(vpaSuffix),
-	}
-
-	vpa := vpa_types.VerticalPodAutoscaler{}
-	err := r.Get(context.Background(), key, &vpa)
-
-	if err == nil {
-		return true, nil
-	}
-
-	if apierrors.IsNotFound(err) {
-		return false, nil
-	}
-
-	return false, err
-}
-
 func (r *DeploymentReconciler) isDeploymentExists(deploymentSuffix string) (bool, error) {
 	key := types.NamespacedName{
 		Namespace: r.deploymentNamespace,
-		Name:      r.buildDeploymentName(deploymentSuffix),
+		Name:      buildDeploymentName(r.deploymentName, deploymentSuffix),
 	}
 
 	deployment := appsv1.Deployment{}
@@ -400,13 +276,6 @@ func (r *DeploymentReconciler) OnRow(row tablewatch.Row) {
 	if !ok {
 		logger.Warningf("Column %s not found on row %v", r.deploymentColumnName, row)
 		return
-	}
-
-	vapExists, _ := r.isVpaExists(deploymentSuffix)
-	if !vapExists {
-		if err := r.createVpa(deploymentSuffix); err != nil {
-			logger.Errorf("Unable to create VPA %s", err)
-		}
 	}
 
 	exists, err := r.isDeploymentExists(deploymentSuffix)
@@ -477,4 +346,5 @@ func (r *DeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&appsv1.Deployment{}).
 		Complete(r)
+	// For(&vpa_types.VerticalPodAutoscaler{}).
 }

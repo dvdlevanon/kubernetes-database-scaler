@@ -11,6 +11,7 @@ import (
 	"github.com/op/go-logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
@@ -72,24 +73,23 @@ func splitEnvironmentVarialbe(arr []string) []string {
 	return arr
 }
 
-func setupController() (*controller.DeploymentReconciler, error) {
-	config, err := ctrl.GetConfig()
-	if err != nil {
+func setupVpaController(manager manager.Manager) (*controller.VpaReconciler, error) {
+	originalVpaName := viper.GetString("original-vpa-name")
+
+	if originalVpaName == "" {
+		return nil, nil
+	}
+
+	if err := vpa_types.SchemeBuilder.AddToScheme(manager.GetScheme()); err != nil {
 		return nil, err
 	}
 
-	manager, err := ctrl.NewManager(config, manager.Options{})
-	if err != nil {
-		return nil, err
-	}
-
-	originalDeploymentNamespace := viper.GetString("original-deployment-namespace")
+	originalVpaNamespace := viper.GetString("original-deployment-namespace")
 	originalDeploymentName := viper.GetString("original-deployment-name")
 	targetDeploymentName := viper.GetString("target-deployment-name")
-	originalVpaName := viper.GetString("original-vpa-name")
-	environments := splitEnvironmentVarialbe(viper.GetStringSlice("environment"))
-	controller, err := controller.New(manager.GetClient(),
-		originalDeploymentNamespace, originalDeploymentName, targetDeploymentName, originalVpaName, environments)
+
+	controller, err := controller.NewVpaController(manager.GetClient(),
+		originalVpaNamespace, originalVpaName, targetDeploymentName, originalDeploymentName)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,24 @@ func setupController() (*controller.DeploymentReconciler, error) {
 		return nil, err
 	}
 
-	go manager.Start(ctrl.SetupSignalHandler())
+	return controller, nil
+}
+
+func setupDeploymentController(manager manager.Manager) (*controller.DeploymentReconciler, error) {
+	originalDeploymentNamespace := viper.GetString("original-deployment-namespace")
+	originalDeploymentName := viper.GetString("original-deployment-name")
+	targetDeploymentName := viper.GetString("target-deployment-name")
+	environments := splitEnvironmentVarialbe(viper.GetStringSlice("environment"))
+	controller, err := controller.New(manager.GetClient(),
+		originalDeploymentNamespace, originalDeploymentName, targetDeploymentName, environments)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := controller.SetupWithManager(manager); err != nil {
+		return nil, err
+	}
+
 	return controller, nil
 }
 
@@ -108,13 +125,34 @@ func watch() error {
 		return err
 	}
 
-	controller, err := setupController()
+	config, err := ctrl.GetConfig()
 	if err != nil {
 		return err
 	}
 
+	manager, err := ctrl.NewManager(config, manager.Options{})
+	if err != nil {
+		return err
+	}
+
+	deploymentController, err := setupDeploymentController(manager)
+	if err != nil {
+		return err
+	}
+
+	vpaController, err := setupVpaController(manager)
+	if err != nil {
+		return err
+	}
+
+	go manager.Start(ctrl.SetupSignalHandler())
+
 	for row := range rows {
-		controller.OnRow(row)
+		deploymentController.OnRow(row)
+
+		if vpaController != nil {
+			vpaController.OnRow(row)
+		}
 	}
 
 	return nil
