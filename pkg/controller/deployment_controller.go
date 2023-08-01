@@ -27,6 +27,7 @@ type DeploymentReconciler struct {
 	deploymentNamespace       string
 	deploymentName            string
 	deploymentColumnName      string
+	vpaName                   string
 	environmentsDefinitionMap map[string]string
 }
 
@@ -76,10 +77,14 @@ func New(client client.Client, deploymentNamespace string, deploymentName string
 func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
-	if req.Namespace != r.deploymentNamespace || req.Name != r.deploymentName {
-		return ctrl.Result{}, nil
+	if req.Namespace == r.deploymentNamespace && req.Name == r.deploymentName {
+		r.reconcileDeployment(ctx, req)
 	}
 
+	return ctrl.Result{}, nil
+}
+
+func (r *DeploymentReconciler) reconcileDeployment(ctx context.Context, req ctrl.Request) {
 	deployment := appsv1.Deployment{}
 	err := r.Get(ctx, req.NamespacedName, &deployment)
 	if err == nil {
@@ -89,8 +94,6 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	} else {
 		logger.Errorf("Unable to get deployment upon reconciling %s", err)
 	}
-
-	return ctrl.Result{}, nil
 }
 
 func (r *DeploymentReconciler) originalDeploymentChanged(ctx context.Context, original appsv1.Deployment) error {
@@ -136,10 +139,10 @@ func (r *DeploymentReconciler) originalDeploymentChanged(ctx context.Context, or
 	return nil
 }
 
-func (r *DeploymentReconciler) originalDeploymentDeleted(ctx context.Context) error {
+func (r *DeploymentReconciler) originalDeploymentDeleted(ctx context.Context) {
 	deployments, err := r.listDuplicatedDeployments(ctx)
 	if err != nil {
-		return err
+		return
 	}
 
 	logger.Infof("Original deployment deleted, removing %d duplicated deployments", len(deployments))
@@ -150,8 +153,6 @@ func (r *DeploymentReconciler) originalDeploymentDeleted(ctx context.Context) er
 			continue
 		}
 	}
-
-	return nil
 }
 
 func (r *DeploymentReconciler) listDuplicatedDeployments(ctx context.Context) ([]appsv1.Deployment, error) {
@@ -172,8 +173,8 @@ func (r *DeploymentReconciler) listDuplicatedDeployments(ctx context.Context) ([
 	return result, nil
 }
 
-func (r *DeploymentReconciler) buildDeploymentName(deploymentSuffix string) string {
-	return fmt.Sprintf("%s-%s", r.deploymentName, deploymentSuffix)
+func buildDeploymentName(deploymentName string, deploymentSuffix string) string {
+	return fmt.Sprintf("%s-%s", deploymentName, deploymentSuffix)
 }
 
 func (r *DeploymentReconciler) getExistingDeployment() (*appsv1.Deployment, error) {
@@ -214,7 +215,7 @@ func (r *DeploymentReconciler) duplicateDeployment(orig *appsv1.Deployment,
 	new := orig.DeepCopy()
 	new.Status = appsv1.DeploymentStatus{}
 	new.ObjectMeta = v1.ObjectMeta{
-		Name:                       r.buildDeploymentName(nameSuffix),
+		Name:                       buildDeploymentName(r.deploymentName, nameSuffix),
 		Namespace:                  orig.ObjectMeta.Namespace,
 		Annotations:                orig.ObjectMeta.Annotations,
 		Labels:                     orig.ObjectMeta.Labels,
@@ -248,7 +249,6 @@ func (r *DeploymentReconciler) duplicateDeployment(orig *appsv1.Deployment,
 
 func (r *DeploymentReconciler) createDeployment(nameSuffix string, environmentsMap map[string]string) error {
 	logger.Infof("Creating a new deployment with suffix %v", nameSuffix)
-
 	orig, err := r.getExistingDeployment()
 	if err != nil {
 		return err
@@ -266,7 +266,7 @@ func (r *DeploymentReconciler) createDeployment(nameSuffix string, environmentsM
 func (r *DeploymentReconciler) isDeploymentExists(deploymentSuffix string) (bool, error) {
 	key := types.NamespacedName{
 		Namespace: r.deploymentNamespace,
-		Name:      r.buildDeploymentName(deploymentSuffix),
+		Name:      buildDeploymentName(r.deploymentName, deploymentSuffix),
 	}
 
 	deployment := appsv1.Deployment{}
@@ -358,4 +358,5 @@ func (r *DeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&appsv1.Deployment{}).
 		Complete(r)
+	// For(&vpa_types.VerticalPodAutoscaler{}).
 }

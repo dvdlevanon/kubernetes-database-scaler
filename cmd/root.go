@@ -11,6 +11,7 @@ import (
 	"github.com/op/go-logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
@@ -72,17 +73,35 @@ func splitEnvironmentVarialbe(arr []string) []string {
 	return arr
 }
 
-func setupController() (*controller.DeploymentReconciler, error) {
-	config, err := ctrl.GetConfig()
+func setupVpaController(manager manager.Manager) (*controller.VpaReconciler, error) {
+	originalVpaName := viper.GetString("original-vpa-name")
+
+	if originalVpaName == "" {
+		return nil, nil
+	}
+
+	if err := vpa_types.SchemeBuilder.AddToScheme(manager.GetScheme()); err != nil {
+		return nil, err
+	}
+
+	originalVpaNamespace := viper.GetString("original-deployment-namespace")
+	originalDeploymentName := viper.GetString("original-deployment-name")
+	targetDeploymentName := viper.GetString("target-deployment-name")
+
+	controller, err := controller.NewVpaController(manager.GetClient(),
+		originalVpaNamespace, originalVpaName, targetDeploymentName, originalDeploymentName)
 	if err != nil {
 		return nil, err
 	}
 
-	manager, err := ctrl.NewManager(config, manager.Options{})
-	if err != nil {
+	if err := controller.SetupWithManager(manager); err != nil {
 		return nil, err
 	}
 
+	return controller, nil
+}
+
+func setupDeploymentController(manager manager.Manager) (*controller.DeploymentReconciler, error) {
 	originalDeploymentNamespace := viper.GetString("original-deployment-namespace")
 	originalDeploymentName := viper.GetString("original-deployment-name")
 	targetDeploymentName := viper.GetString("target-deployment-name")
@@ -97,7 +116,6 @@ func setupController() (*controller.DeploymentReconciler, error) {
 		return nil, err
 	}
 
-	go manager.Start(ctrl.SetupSignalHandler())
 	return controller, nil
 }
 
@@ -107,13 +125,34 @@ func watch() error {
 		return err
 	}
 
-	controller, err := setupController()
+	config, err := ctrl.GetConfig()
 	if err != nil {
 		return err
 	}
 
+	manager, err := ctrl.NewManager(config, manager.Options{})
+	if err != nil {
+		return err
+	}
+
+	deploymentController, err := setupDeploymentController(manager)
+	if err != nil {
+		return err
+	}
+
+	vpaController, err := setupVpaController(manager)
+	if err != nil {
+		return err
+	}
+
+	go manager.Start(ctrl.SetupSignalHandler())
+
 	for row := range rows {
-		controller.OnRow(row)
+		deploymentController.OnRow(row)
+
+		if vpaController != nil {
+			vpaController.OnRow(row)
+		}
 	}
 
 	return nil
@@ -160,6 +199,7 @@ func init() {
 	rootCmd.Flags().StringP("original-deployment-name", "", "", "Deployment name to duplicate")
 	rootCmd.Flags().StringP("target-deployment-name", "", "", "A column name to append to the copied deployment")
 	rootCmd.Flags().StringArrayP("environment", "", make([]string, 0), "Names of columns to add as environment variables")
+	rootCmd.Flags().StringP("original-vpa-name", "", "", "A vertical pod autoscaler to duplicate")
 
 	viper.BindPFlags(rootCmd.Flags())
 }
