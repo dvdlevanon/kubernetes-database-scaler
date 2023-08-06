@@ -227,13 +227,13 @@ func (r *DeploymentReconciler) duplicateDeployment(orig *appsv1.Deployment,
 
 	for key, value := range new.Spec.Selector.MatchLabels {
 		if key == "name" && value == orig.ObjectMeta.Name {
-			new.Spec.Selector.MatchLabels[value] = r.buildDeploymentName(nameSuffix)
+			new.Spec.Selector.MatchLabels[value] = buildDeploymentName(r.deploymentName, nameSuffix)
 		}
 	}
 
 	for key, value := range new.Spec.Template.ObjectMeta.Labels {
 		if key == "name" && value == orig.ObjectMeta.Name {
-			new.Spec.Template.ObjectMeta.Labels[value] = r.buildDeploymentName(nameSuffix)
+			new.Spec.Template.ObjectMeta.Labels[value] = buildDeploymentName(r.deploymentName, nameSuffix)
 		}
 	}
 
