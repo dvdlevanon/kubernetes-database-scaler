@@ -27,7 +27,6 @@ type DeploymentReconciler struct {
 	deploymentNamespace       string
 	deploymentName            string
 	deploymentColumnName      string
-	vpaName                   string
 	environmentsDefinitionMap map[string]string
 }
 
@@ -358,5 +357,4 @@ func (r *DeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&appsv1.Deployment{}).
 		Complete(r)
-	// For(&vpa_types.VerticalPodAutoscaler{}).
 }
