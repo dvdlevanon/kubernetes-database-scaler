@@ -66,7 +66,10 @@ func (r *VpaReconciler) reconcileVpa(ctx context.Context, req ctrl.Request) {
 	vpa := vpa_types.VerticalPodAutoscaler{}
 	err := r.Get(ctx, req.NamespacedName, &vpa)
 	if err == nil {
-		r.originalVpaChanged(ctx, vpa)
+		// Commenting this becaues we contantly get reconcile even if VPA isn't changed.
+		//	No easy way to detect it, and its not that important this time.
+		//
+		// r.originalVpaChanged(ctx, vpa)
 	} else if apierrors.IsNotFound(err) {
 		r.originalVpaDeleted(ctx)
 	} else {
