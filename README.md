@@ -1,6 +1,20 @@
 
 # Kubernetes Database Scaler
 
+![Build Status](https://img.shields.io/badge/build-passing-success)
+![License](https://img.shields.io/badge/license-MIT-blue)
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/dvdlevanon)](https://artifacthub.io/packages/search?repo=dvdlevanon)
+
+## Table of Contents
+- [Overview](#overview)
+- [Building](#build)
+- [Usage](#usage)
+- [Docker Support](#docker-support)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Overview
+
 Kubernetes Database Scaler is a custom Kubernetes controller. It's designed to automate the creation of Kubernetes deployments based on the rows in a specified database table. This tool is valuable for creating isolated environments (pods) per customer for systems with multi-tenant architecture. By dynamically generating deployments based on database rows, you can scale out your Kubernetes deployments in a very efficient and controlled manner.
 
 Each row in the database table corresponds to a Kubernetes deployment. You can even add conditions to query specific rows, allowing for finer control over which rows translate into deployments. This is useful when only a subset of rows are needed to create deployments.
@@ -17,15 +31,13 @@ To build the Kubernetes Database Scaler, run the following command:
 make build
 ```
 
-## Running
+## Usage
 
 To run the Kubernetes Database Scaler, execute:
 
 ```bash
 ./build/kubernetes-database-scaler
 ```
-
-## Usage
 
 Here is the usage information for Kubernetes Database Scaler:
 
@@ -52,15 +64,13 @@ Flags:
 
 ```
 
-## Building Docker Image
+## Docker Support
 
 To build the Docker image for Kubernetes Database Scaler, use the following command:
 
 ```bash
 make docker
 ```
-
-## Running Docker Container
 
 To run the Kubernetes Database Scaler as a Docker container, execute:
 
@@ -81,3 +91,11 @@ docker run \
   -e "KUBERNETES_DATABASE_SCALER_ENVIRONMENT=<env1>=<column_name1>,<env2>=<column_name2>" \
 	-it kubernetes-database-scaler:latest
 ```
+
+## Contributing
+
+Feel free to submit pull requests or create issues to improve the project.
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE.md file for details.
