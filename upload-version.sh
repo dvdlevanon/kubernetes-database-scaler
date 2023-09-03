@@ -9,4 +9,9 @@ new_version="${base}.${new_minor}"
 echo "Creating new version: $new_version"
 
 git tag "$new_version"
+sed -i "s/appVersion: .*/appVersion: \"$new_version\"/" charts/Chart.yaml
+git add charts/Chart.yaml
+git commit -m "Update appVersion to $new_version"
+
+git push origin main
 git push --tags
