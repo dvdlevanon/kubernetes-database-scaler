@@ -1,0 +1,3 @@
+#!/bin/bash
+
+helm package charts -d ../helm-charts/

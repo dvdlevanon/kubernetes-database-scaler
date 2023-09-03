@@ -71,8 +71,18 @@ func (d *dbConn) buildPostgresConnectionInfo() (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s",
-		d.host, d.port, username, password, d.dbname), nil
+	dsn := fmt.Sprintf("host=%s port=%s dbname=%s",
+		d.host, d.port, d.dbname)
+
+	if username != "" {
+		dsn = fmt.Sprintf("%s user=%s", dsn, username)
+	}
+
+	if password != "" {
+		dsn = fmt.Sprintf("%s password=%s", dsn, password)
+	}
+
+	return dsn, nil
 }
 
 func (d *dbConn) openDbConnection() (*sql.DB, error) {
@@ -108,13 +118,20 @@ func (d *dbConn) verifyDbConnection() error {
 }
 
 func (d *dbConn) openAndVerify() error {
+	oldConn := d.conn
 	conn, err := d.openDbConnection()
 	if err != nil {
 		return err
 	}
 
 	d.conn = conn
-	return d.verifyDbConnection()
+	result := d.verifyDbConnection()
+
+	if oldConn != nil {
+		oldConn.Close()
+	}
+
+	return result
 }
 
 func (d *dbConn) watchDbCredentials() {
