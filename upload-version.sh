@@ -1,5 +1,7 @@
 #!/bin/bash
 
+git fetch --tags
+
 last_version=$(git describe --tags `git rev-list --tags --max-count=1`)
 base=$(echo $last_version | cut -d '.' -f1-2)
 minor=$(echo $last_version | cut -d '.' -f3)
