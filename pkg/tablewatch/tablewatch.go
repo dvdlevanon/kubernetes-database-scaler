@@ -23,12 +23,17 @@ func getSqlCondition(conditions []string) (string, []any, error) {
 	whereParts := make([]string, 0)
 	queryParams := make([]any, 0)
 	for i, condition := range conditions {
-		parts := strings.Split(condition, "=")
+		operator := "!="
+		parts := strings.Split(condition, "!=")
 		if len(parts) != 2 {
-			return "", nil, fmt.Errorf("invalid condition %s", condition)
+			operator = "="
+			parts = strings.Split(condition, "=")
+			if len(parts) != 2 {
+				return "", nil, fmt.Errorf("invalid condition %s", condition)
+			}
 		}
 
-		whereParts = append(whereParts, fmt.Sprintf("%s = $%d", parts[0], i+1))
+		whereParts = append(whereParts, fmt.Sprintf("%s %s $%d", parts[0], operator, i+1))
 		queryParams = append(queryParams, parts[1])
 	}
 
