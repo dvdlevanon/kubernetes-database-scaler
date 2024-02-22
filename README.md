@@ -1,4 +1,3 @@
-
 # Kubernetes Database Scaler
 
 ![Build Status](https://img.shields.io/badge/build-passing-success)
@@ -6,6 +5,7 @@
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/dvdlevanon)](https://artifacthub.io/packages/search?repo=dvdlevanon)
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [Building](#build)
 - [Usage](#usage)
@@ -17,9 +17,9 @@
 
 Kubernetes Database Scaler is a custom Kubernetes controller. It's designed to automate the creation of Kubernetes deployments based on the rows in a specified database table. This tool is valuable for creating isolated environments (pods) per customer for systems with multi-tenant architecture. By dynamically generating deployments based on database rows, you can scale out your Kubernetes deployments in a very efficient and controlled manner.
 
-Each row in the database table corresponds to a Kubernetes deployment. You can even add conditions to query specific rows, allowing for finer control over which rows translate into deployments. This is useful when only a subset of rows are needed to create deployments.
+Each row in the database table corresponds to a Kubernetes deployment. You can even add a condition to query specific rows, allowing for finer control over which rows translate into deployments. This is useful when only a subset of rows are needed to create deployments.
 
-The deployments are not created from scratch; instead, an existing deployment is duplicated and customized for each row. The customization includes appending a value from a specific database column to the new deployment's name, which aids in the identification of the deployments. 
+The deployments are not created from scratch; instead, an existing deployment is duplicated and customized for each row. The customization includes appending a value from a specific database column to the new deployment's name, which aids in the identification of the deployments.
 
 In addition, you can specify database columns whose values will be added as environment variables to the new deployments. This can be used to pass specific configuration or runtime data from your database to the Kubernetes deployments.
 
@@ -47,18 +47,21 @@ Usage:
 
 Flags:
       --check-interval int                     Periodic check interval in seconds (default 10)
-      --condition stringArray                  Only rows match this condition will be fetched, can be specified multiple times - ('column-name=value')
       --config string                          config file (default is $HOME/.kubernetes-database-scaler.yaml)
       --database-driver string                 Database driver name (postgres, mysql e.g.)
       --database-host string                   Database hostname
       --database-name string                   Database name
       --database-password string               Database password
+      --database-password-file string          A file containing a database password
       --database-port string                   Database port
       --database-username string               Database username
+      --database-username-file string          A file containing a database username
       --environment stringArray                Names of columns to add as environment variables
   -h, --help                                   help for kubernetes-database-scaler
       --original-deployment-name string        Deployment name to duplicate
       --original-deployment-namespace string   Deployment namespace to duplicate
+      --original-vpa-name string               A vertical pod autoscaler to duplicate
+      --sql-condition string                   Only rows match this condition will be fetched
   -t, --table-name string                      Database table to watch
       --target-deployment-name string          A column name to append to the copied deployment
 
@@ -84,7 +87,7 @@ docker run \
   -e "KUBERNETES_DATABASE_SCALER_DATABASE_PASSWORD=<db_password>" \
   -e "KUBERNETES_DATABASE_SCALER_CHECK_INTERVAL=<check_interval_seconds>" \
   -e "KUBERNETES_DATABASE_SCALER_TABLE_NAME=<db_tablename>" \
-  -e "KUBERNETES_DATABASE_SCALER_CONDITION=<column_name_1>=<value1>,<column_name_2>=<value2>" \
+  -e "KUBERNETES_DATABASE_SCALER_SQL_CONDITION=<sql_where_clause>" \
   -e "KUBERNETES_DATABASE_SCALER_ORIGINAL_DEPLOYMENT_NAMESPACE=<kubernetes_namespace>" \
   -e "KUBERNETES_DATABASE_SCALER_ORIGINAL_DEPLOYMENT_NAME=<kubernetes_deployment_name>" \
   -e "KUBERNETES_DATABASE_SCALER_TARGET_DEPLOYMENT_NAME=<column_name>" \

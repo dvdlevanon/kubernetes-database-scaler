@@ -50,9 +50,9 @@ func setupWatcher(rows chan<- tablewatch.Row) error {
 	usernameFile := viper.GetString("database-username-file")
 	passwordFile := viper.GetString("database-password-file")
 	tableName := viper.GetString("table-name")
-	conditions := splitEnvironmentVarialbe(viper.GetStringSlice("condition"))
+	sqlCondition := viper.GetString("sql-condition")
 	watcher, err := tablewatch.New(driver, host, port, dbname,
-		username, password, usernameFile, passwordFile, tableName, conditions)
+		username, password, usernameFile, passwordFile, tableName, sqlCondition)
 	if err != nil {
 		return err
 	}
@@ -193,7 +193,7 @@ func init() {
 
 	rootCmd.Flags().IntP("check-interval", "", 10, "Periodic check interval in seconds")
 	rootCmd.Flags().StringP("table-name", "t", "", "Database table to watch")
-	rootCmd.Flags().StringArrayP("condition", "", make([]string, 0), "Only rows match this condition will be fetched, can be specified multiple times - ('column-name=value')")
+	rootCmd.Flags().StringP("sql-condition", "", "", "Only rows match this condition will be fetched")
 
 	rootCmd.Flags().StringP("original-deployment-namespace", "", "", "Deployment namespace to duplicate")
 	rootCmd.Flags().StringP("original-deployment-name", "", "", "Deployment name to duplicate")

@@ -2,11 +2,13 @@ package tablewatch
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/op/go-logging"
+	"github.com/xwb1989/sqlparser"
 )
 
 type Row map[string]string
@@ -14,55 +16,71 @@ type Row map[string]string
 var logger = logging.MustGetLogger("tablewatch")
 
 type Tablewatch struct {
-	sqlQuery  string
-	sqlParams []any
-	dbConn    *dbConn
+	sqlQuery string
+	dbConn   *dbConn
 }
 
-func getSqlCondition(conditions []string) (string, []any, error) {
-	whereParts := make([]string, 0)
-	queryParams := make([]any, 0)
-	for i, condition := range conditions {
-		operator := "!="
-		parts := strings.Split(condition, "!=")
-		if len(parts) != 2 {
-			operator = "="
-			parts = strings.Split(condition, "=")
-			if len(parts) != 2 {
-				return "", nil, fmt.Errorf("invalid condition %s", condition)
-			}
-		}
-
-		whereParts = append(whereParts, fmt.Sprintf("%s %s $%d", parts[0], operator, i+1))
-		queryParams = append(queryParams, parts[1])
+// This function help to prevent sql injection using the where clause.
+func isValidWhereClause(whereClause string) error {
+	if whereClause == "" {
+		return nil
 	}
 
-	whereClause := strings.Join(whereParts, " AND ")
-	return whereClause, queryParams, nil
-}
-
-func getSqlQuery(tableName string, conditions []string) (string, []any, error) {
-	if tableName == "" {
-		return "", nil, fmt.Errorf("table name is missing")
-	}
-
-	where, params, err := getSqlCondition(conditions)
+	stmt := fmt.Sprintf("select * from fake_table where %s", whereClause)
+	_, err := sqlparser.Parse(stmt)
 	if err != nil {
-		return "", nil, err
+		// Parsing fail if the where clause contains more than a single sql statement, like this sql injection
+		//
+		// 	"'1' = '1'; TRUNCATE table;"
+		//
+		logger.Warningf("Invalid where clause %s", stmt)
+		return err
 	}
 
-	if len(params) == 0 {
-		return fmt.Sprintf("SELECT * FROM %s", tableName), nil, nil
+	disallowedPatterns := []string{
+		";",        // Prevents multiple statements
+		"--",       // Single line comment
+		"xp_",      // Common prefix for SQL Server system stored procedures
+		"/*", "*/", // Multi-line comment
+		"truncate", "insert", "delete", "update", // DML operations
+		"drop", "create", "alter", "grant", // DDL operations
+		"shutdown", "exec", // Dangerous SQL Server commands
+	}
+
+	normalizedClause := strings.ToLower(whereClause)
+
+	for _, pattern := range disallowedPatterns {
+		if strings.Contains(normalizedClause, pattern) {
+			return errors.New("disallowed pattern found in WHERE clause: " + pattern)
+		}
+	}
+
+	return nil
+}
+
+func getSqlQuery(tableName string, sqlCondition string) (string, error) {
+	if tableName == "" {
+		return "", fmt.Errorf("table name is missing")
+	}
+
+	if err := isValidWhereClause(sqlCondition); err != nil {
+		return "", err
+	}
+
+	where := sqlCondition
+
+	if where != "" {
+		return fmt.Sprintf("SELECT * FROM %s WHERE %s", tableName, where), nil
 	} else {
-		return fmt.Sprintf("SELECT * FROM %s WHERE %s", tableName, where), params, nil
+		return fmt.Sprintf("SELECT * FROM %s", tableName), nil
 	}
 }
 
 func New(driver string, host string, port string, dbname string,
 	username string, password string, usernameFile string, passwordFile string,
-	tableName string, conditions []string) (*Tablewatch, error) {
+	tableName string, sqlCondition string) (*Tablewatch, error) {
 
-	sqlQuery, sqlParams, err := getSqlQuery(tableName, conditions)
+	sqlQuery, err := getSqlQuery(tableName, sqlCondition)
 	if err != nil {
 		return nil, err
 	}
@@ -86,16 +104,15 @@ func New(driver string, host string, port string, dbname string,
 	go dbConn.watchDbCredentials()
 
 	watcher := &Tablewatch{
-		dbConn:    dbConn,
-		sqlQuery:  sqlQuery,
-		sqlParams: sqlParams,
+		dbConn:   dbConn,
+		sqlQuery: sqlQuery,
 	}
 
 	return watcher, nil
 }
 
 func (w *Tablewatch) Watch(checkInterval int, output chan<- Row) {
-	logger.Infof("SQL Query %s, params: %+q", w.sqlQuery, w.sqlParams)
+	logger.Infof("SQL Query %s", w.sqlQuery)
 
 	for {
 		if err := w.periodicCheck(output); err != nil {
@@ -109,7 +126,7 @@ func (w *Tablewatch) Watch(checkInterval int, output chan<- Row) {
 func (w *Tablewatch) periodicCheck(output chan<- Row) error {
 	logger.Debugf("Periodic check DB table")
 
-	rows, err := w.dbConn.conn.Query(w.sqlQuery, w.sqlParams...)
+	rows, err := w.dbConn.conn.Query(w.sqlQuery)
 	if err != nil {
 		return err
 	}
