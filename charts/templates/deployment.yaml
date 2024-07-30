@@ -61,11 +61,12 @@ spec:
           - name: KUBERNETES_DATABASE_SCALER_ORIGINAL_DEPLOYMENT_NAME
             value: {{ .Values.scaler.originalDeploymentName }}
           - name: KUBERNETES_DATABASE_SCALER_ORIGINAL_VPA_NAME
-            value: {{ .Values.scaler.originalVpaName }}
           - name: KUBERNETES_DATABASE_SCALER_TARGET_DEPLOYMENT_NAME
             value: {{ .Values.scaler.targetDeploymentName }}
           - name: KUBERNETES_DATABASE_SCALER_ENVIRONMENT
             value: {{ .Values.scaler.environment }}
+          - name: KUBERNETES_DATABASE_SCALER_EXCLUDE_LABEL
+            value: {{ .Values.scaler.excludeLabel }}
           - name: KUBERNETES_DATABASE_SCALER_CHECK_INTERVAL
             value: "{{ .Values.scaler.checkInterval }}"
           resources:

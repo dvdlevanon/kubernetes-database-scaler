@@ -78,3 +78,4 @@ scaler:
   originalVpaName: ""
   targetDeploymentName: ""
   environment: ""
+  excludeLabel: ""
