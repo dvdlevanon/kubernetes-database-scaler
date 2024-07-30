@@ -62,7 +62,7 @@ func setupWatcher(rows chan<- tablewatch.Row) error {
 	return nil
 }
 
-func splitEnvironmentVarialbe(arr []string) []string {
+func splitEnvironmentVariable(arr []string) []string {
 	if len(arr) == 1 && strings.Contains(arr[0], ",") {
 		// When using environment variable instead of command line args,
 		//	we support passing multiple values separated by a comma
@@ -105,9 +105,10 @@ func setupDeploymentController(manager manager.Manager) (*controller.DeploymentR
 	originalDeploymentNamespace := viper.GetString("original-deployment-namespace")
 	originalDeploymentName := viper.GetString("original-deployment-name")
 	targetDeploymentName := viper.GetString("target-deployment-name")
-	environments := splitEnvironmentVarialbe(viper.GetStringSlice("environment"))
+	environments := splitEnvironmentVariable(viper.GetStringSlice("environment"))
+	excludeLabels := splitEnvironmentVariable(viper.GetStringSlice("exclude-label"))
 	controller, err := controller.New(manager.GetClient(),
-		originalDeploymentNamespace, originalDeploymentName, targetDeploymentName, environments)
+		originalDeploymentNamespace, originalDeploymentName, targetDeploymentName, environments, excludeLabels)
 	if err != nil {
 		return nil, err
 	}
@@ -200,6 +201,7 @@ func init() {
 	rootCmd.Flags().StringP("target-deployment-name", "", "", "A column name to append to the copied deployment")
 	rootCmd.Flags().StringArrayP("environment", "", make([]string, 0), "Names of columns to add as environment variables")
 	rootCmd.Flags().StringP("original-vpa-name", "", "", "A vertical pod autoscaler to duplicate")
+	rootCmd.Flags().StringArrayP("exclude-label", "", make([]string, 0), "Specify label names to exclude from the duplicated deployment")
 
 	viper.BindPFlags(rootCmd.Flags())
 }

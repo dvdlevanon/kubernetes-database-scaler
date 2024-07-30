@@ -28,6 +28,7 @@ type DeploymentReconciler struct {
 	deploymentName            string
 	deploymentColumnName      string
 	environmentsDefinitionMap map[string]string
+	excludeLabels             []string
 }
 
 func buildEnvironmentDefinitionMap(environments []string) (map[string]string, error) {
@@ -45,7 +46,7 @@ func buildEnvironmentDefinitionMap(environments []string) (map[string]string, er
 }
 
 func New(client client.Client, deploymentNamespace string, deploymentName string,
-	deploymentColumnName string, environments []string) (*DeploymentReconciler, error) {
+	deploymentColumnName string, environments []string, excludeLabels []string) (*DeploymentReconciler, error) {
 
 	if deploymentName == "" {
 		return nil, fmt.Errorf("deployment name is empty")
@@ -70,6 +71,7 @@ func New(client client.Client, deploymentNamespace string, deploymentName string
 		deploymentNamespace:       deploymentNamespace,
 		deploymentColumnName:      deploymentColumnName,
 		environmentsDefinitionMap: environmentsDefinitionMap,
+		excludeLabels:             excludeLabels,
 	}, nil
 }
 
@@ -212,6 +214,11 @@ func (r *DeploymentReconciler) replaceOrAddEnv(envs []corev1.EnvVar, name string
 func (r *DeploymentReconciler) duplicateDeployment(orig *appsv1.Deployment,
 	nameSuffix string, environmentsMap map[string]string) *appsv1.Deployment {
 	new := orig.DeepCopy()
+
+	for _, key := range r.excludeLabels {
+		delete(orig.ObjectMeta.Labels, key)
+	}
+
 	new.Status = appsv1.DeploymentStatus{}
 	new.ObjectMeta = v1.ObjectMeta{
 		Name:                       buildDeploymentName(r.deploymentName, nameSuffix),
