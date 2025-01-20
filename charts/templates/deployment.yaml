@@ -56,6 +56,8 @@ spec:
             value: {{ .Values.scaler.tableName }}
           - name: KUBERNETES_DATABASE_SCALER_SQL_CONDITION
             value: {{ .Values.scaler.sqlCondition }}
+          - name: KUBERNETES_DATABASE_SCALER_RAW_SQL
+            value: {{ .Values.scaler.rawSql }}
           - name: KUBERNETES_DATABASE_SCALER_ORIGINAL_DEPLOYMENT_NAMESPACE
             value: {{ .Values.scaler.originalDeploymentNamespace }}
           - name: KUBERNETES_DATABASE_SCALER_ORIGINAL_DEPLOYMENT_NAME

@@ -61,8 +61,9 @@ Flags:
       --original-deployment-name string        Deployment name to duplicate
       --original-deployment-namespace string   Deployment namespace to duplicate
       --original-vpa-name string               A vertical pod autoscaler to duplicate
-      --sql-condition string                   Only rows match this condition will be fetched
-  -t, --table-name string                      Database table to watch
+      --sql-condition string                   Filter rows using a WHERE clause (e.g., 'status = \"active\"')
+      --raw-sql string                         Execute a custom SQL query instead of using table-name and sql-condition (Warning: No SQL injection protection)
+  -t, --table-name string                      Specify the database table to monitor for changes
       --target-deployment-name string          A column name to append to the copied deployment
 
 ```
@@ -88,6 +89,7 @@ docker run \
   -e "KUBERNETES_DATABASE_SCALER_CHECK_INTERVAL=<check_interval_seconds>" \
   -e "KUBERNETES_DATABASE_SCALER_TABLE_NAME=<db_tablename>" \
   -e "KUBERNETES_DATABASE_SCALER_SQL_CONDITION=<sql_where_clause>" \
+  -e "KUBERNETES_DATABASE_SCALER_RAW_SQL=<raw_sql>" \
   -e "KUBERNETES_DATABASE_SCALER_ORIGINAL_DEPLOYMENT_NAMESPACE=<kubernetes_namespace>" \
   -e "KUBERNETES_DATABASE_SCALER_ORIGINAL_DEPLOYMENT_NAME=<kubernetes_deployment_name>" \
   -e "KUBERNETES_DATABASE_SCALER_TARGET_DEPLOYMENT_NAME=<column_name>" \

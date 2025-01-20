@@ -73,6 +73,7 @@ scaler:
   checkInterval: 10
   tableName: ""
   sqlCondition: ""
+  rawSql: ""
   originalDeploymentName: ""
   originalDeploymentNamespace: ""
   originalVpaName: ""

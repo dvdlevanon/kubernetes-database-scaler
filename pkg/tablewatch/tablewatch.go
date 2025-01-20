@@ -78,11 +78,15 @@ func getSqlQuery(tableName string, sqlCondition string) (string, error) {
 
 func New(driver string, host string, port string, dbname string,
 	username string, password string, usernameFile string, passwordFile string,
-	tableName string, sqlCondition string) (*Tablewatch, error) {
+	tableName string, sqlCondition string, rawSql string) (*Tablewatch, error) {
 
-	sqlQuery, err := getSqlQuery(tableName, sqlCondition)
-	if err != nil {
-		return nil, err
+	sqlQuery := rawSql
+	if tableName != "" && sqlCondition != "" {
+		var err error
+		sqlQuery, err = getSqlQuery(tableName, sqlCondition)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	dbConn := &dbConn{
@@ -96,7 +100,7 @@ func New(driver string, host string, port string, dbname string,
 		passwordFile: passwordFile,
 	}
 
-	err = dbConn.openAndVerify()
+	err := dbConn.openAndVerify()
 	if err != nil {
 		return nil, err
 	}

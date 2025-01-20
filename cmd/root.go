@@ -51,8 +51,9 @@ func setupWatcher(rows chan<- tablewatch.Row) error {
 	passwordFile := viper.GetString("database-password-file")
 	tableName := viper.GetString("table-name")
 	sqlCondition := viper.GetString("sql-condition")
+	rawSql := viper.GetString("raw-sql")
 	watcher, err := tablewatch.New(driver, host, port, dbname,
-		username, password, usernameFile, passwordFile, tableName, sqlCondition)
+		username, password, usernameFile, passwordFile, tableName, sqlCondition, rawSql)
 	if err != nil {
 		return err
 	}
@@ -193,8 +194,9 @@ func init() {
 	rootCmd.Flags().StringP("database-password-file", "", "", "A file containing a database password")
 
 	rootCmd.Flags().IntP("check-interval", "", 10, "Periodic check interval in seconds")
-	rootCmd.Flags().StringP("table-name", "t", "", "Database table to watch")
-	rootCmd.Flags().StringP("sql-condition", "", "", "Only rows match this condition will be fetched")
+	rootCmd.Flags().StringP("table-name", "t", "", "Specify the database table to monitor for changes")
+	rootCmd.Flags().StringP("sql-condition", "", "", "Filter rows using a WHERE clause (e.g., 'status = \"active\"')")
+	rootCmd.Flags().StringP("raw-sql", "", "", "Execute a custom SQL query instead of using table-name and sql-condition (Warning: No SQL injection protection)")
 
 	rootCmd.Flags().StringP("original-deployment-namespace", "", "", "Deployment namespace to duplicate")
 	rootCmd.Flags().StringP("original-deployment-name", "", "", "Deployment name to duplicate")
