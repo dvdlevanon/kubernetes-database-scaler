@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path"
 	"strings"
-	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -134,8 +134,31 @@ func (d *dbConn) openAndVerify() error {
 	return result
 }
 
+func (d *dbConn) getDirsToWatch() map[string]map[string]bool {
+	dirs := make(map[string]map[string]bool)
+
+	if d.passwordFile != "" {
+		dir := path.Dir(d.passwordFile)
+		if dirs[dir] == nil {
+			dirs[dir] = make(map[string]bool)
+		}
+		dirs[dir][path.Base(d.passwordFile)] = true
+	}
+
+	if d.usernameFile != "" {
+		dir := path.Dir(d.usernameFile)
+		if dirs[dir] == nil {
+			dirs[dir] = make(map[string]bool)
+		}
+		dirs[dir][path.Base(d.usernameFile)] = true
+	}
+
+	return dirs
+}
+
 func (d *dbConn) watchDbCredentials() {
-	if d.passwordFile == "" && d.usernameFile == "" {
+	dirs := d.getDirsToWatch()
+	if len(dirs) == 0 {
 		return
 	}
 
@@ -145,21 +168,14 @@ func (d *dbConn) watchDbCredentials() {
 		return
 	}
 
-	if d.passwordFile != "" {
-		if err := watcher.Add(d.passwordFile); err != nil {
-			logger.Errorf("Unable to watch password file %s %s", d.passwordFile, err)
+	for dir := range dirs {
+		if err := watcher.Add(dir); err != nil {
+			logger.Errorf("Unable to watch for %s %s", dir, err)
 			return
 		}
 	}
 
-	if d.usernameFile != "" {
-		if err := watcher.Add(d.usernameFile); err != nil {
-			logger.Errorf("Unable to watch username file %s %s", d.usernameFile, err)
-			return
-		}
-	}
-
-	logger.Debugf("Start watching for DB credential files (user: %s) (pass: %s)", d.usernameFile, d.passwordFile)
+	logger.Debugf("Start watching for DB credential files (dirs: %v)", dirs)
 
 	for {
 		select {
@@ -168,29 +184,28 @@ func (d *dbConn) watchDbCredentials() {
 				return
 			}
 
-			shouldReload := event.Has(fsnotify.Write)
+			dir := path.Dir(event.Name)
+			name := path.Base(event.Name)
+
+			logger.Debugf("File Changed on the Filesystem [dir: %s] [name: %s] [operation? %s]", dir, name, event.Op)
 
 			if event.Has(fsnotify.Remove) {
-				logger.Infof("DB credentials file removed: %s", event.Name)
-				if err := watcher.Remove(event.Name); err != nil {
-					logger.Warningf("Unable to remove %s from watcher %s - current list: [%s]", event.Name, err, watcher.WatchList())
-				}
-
-				err := watcher.Add(event.Name)
-				for err != nil {
-					logger.Errorf("Unable to watch file %s %s", event.Name, err)
-					time.Sleep(time.Second)
-					err = watcher.Add(event.Name)
-				}
-
-				shouldReload = true
+				continue
 			}
 
-			if shouldReload {
-				logger.Infof("Relading DB credentials file: %s", event.Name)
-				if err := d.openAndVerify(); err != nil {
-					logger.Errorf("Error openning db connection during rotation %s", err)
-				}
+			files, ok := dirs[dir]
+			if !ok {
+				continue
+			}
+
+			_, ok = files[name]
+			if !ok {
+				continue
+			}
+
+			logger.Infof("Relading DB credentials file: %s", event.Name)
+			if err := d.openAndVerify(); err != nil {
+				logger.Errorf("Error openning db connection during rotation %s", err)
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
