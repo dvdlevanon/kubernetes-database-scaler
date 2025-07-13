@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
@@ -134,23 +135,61 @@ func (d *dbConn) openAndVerify() error {
 	return result
 }
 
+func (d *dbConn) addSymlinkChainToWatch(dirs map[string]map[string]bool, filePath string) {
+	const maxSymlinkDepth = 10 // Prevent infinite loops
+
+	// Start with the original file
+	currentPath := filePath
+
+	for depth := 0; depth < maxSymlinkDepth; depth++ {
+		// Add the current file to the watch map
+		dir := path.Dir(currentPath)
+		name := path.Base(currentPath)
+
+		if dirs[dir] == nil {
+			dirs[dir] = make(map[string]bool)
+		}
+		dirs[dir][name] = true
+
+		// Check if current path is a symlink
+		fileInfo, err := os.Lstat(currentPath)
+		if err != nil {
+			logger.Debugf("Failed to stat %s: %s", currentPath, err)
+			break
+		}
+
+		// If it's not a symlink, we're done
+		if fileInfo.Mode()&os.ModeSymlink == 0 {
+			break
+		}
+
+		// Resolve the symlink
+		newPath, err := filepath.EvalSymlinks(currentPath)
+		if err != nil {
+			logger.Debugf("Failed to resolve symlink %s: %s", currentPath, err)
+			break
+		}
+
+		// If we got the same path, we've hit a circular symlink
+		if newPath == currentPath {
+			logger.Warningf("Circular symlink detected at %s", currentPath)
+			break
+		}
+
+		currentPath = newPath
+		logger.Debugf("Added symlink level %d to watch: %s -> %s", depth+1, filePath, currentPath)
+	}
+}
+
 func (d *dbConn) getDirsToWatch() map[string]map[string]bool {
 	dirs := make(map[string]map[string]bool)
 
 	if d.passwordFile != "" {
-		dir := path.Dir(d.passwordFile)
-		if dirs[dir] == nil {
-			dirs[dir] = make(map[string]bool)
-		}
-		dirs[dir][path.Base(d.passwordFile)] = true
+		d.addSymlinkChainToWatch(dirs, d.passwordFile)
 	}
 
 	if d.usernameFile != "" {
-		dir := path.Dir(d.usernameFile)
-		if dirs[dir] == nil {
-			dirs[dir] = make(map[string]bool)
-		}
-		dirs[dir][path.Base(d.usernameFile)] = true
+		d.addSymlinkChainToWatch(dirs, d.usernameFile)
 	}
 
 	return dirs
