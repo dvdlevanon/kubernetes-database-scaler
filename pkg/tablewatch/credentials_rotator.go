@@ -232,10 +232,6 @@ func (d *dbConn) watchDbCredentials() {
 
 			logger.Debugf("File Changed on the Filesystem [dir: %s] [name: %s] [operation? %s]", dir, name, event.Op)
 
-			if event.Has(fsnotify.Remove) {
-				continue
-			}
-
 			files, ok := dirs[dir]
 			if !ok {
 				continue
