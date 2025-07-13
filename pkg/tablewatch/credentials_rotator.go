@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
@@ -163,20 +162,25 @@ func (d *dbConn) addSymlinkChainToWatch(dirs map[string]map[string]bool, filePat
 			break
 		}
 
-		// Resolve the symlink
-		newPath, err := filepath.EvalSymlinks(currentPath)
+		// Read the symlink target (step by step, not full resolution)
+		targetPath, err := os.Readlink(currentPath)
 		if err != nil {
-			logger.Debugf("Failed to resolve symlink %s: %s", currentPath, err)
+			logger.Debugf("Failed to read symlink %s: %s", currentPath, err)
 			break
 		}
 
+		// Make the target path absolute if it's relative
+		if !path.IsAbs(targetPath) {
+			targetPath = path.Join(path.Dir(currentPath), targetPath)
+		}
+
 		// If we got the same path, we've hit a circular symlink
-		if newPath == currentPath {
+		if targetPath == currentPath {
 			logger.Warningf("Circular symlink detected at %s", currentPath)
 			break
 		}
 
-		currentPath = newPath
+		currentPath = targetPath
 		logger.Debugf("Added symlink level %d to watch: %s -> %s", depth+1, filePath, currentPath)
 	}
 }
