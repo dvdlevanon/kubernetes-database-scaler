@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -134,69 +135,34 @@ func (d *dbConn) openAndVerify() error {
 	return result
 }
 
-func (d *dbConn) addSymlinkChainToWatch(dirs map[string]map[string]bool, filePath string) {
-	const maxSymlinkDepth = 10 // Prevent infinite loops
-
-	// Start with the original file
-	currentPath := filePath
-
-	for depth := 0; depth < maxSymlinkDepth; depth++ {
-		// Add the current file to the watch map
-		dir := path.Dir(currentPath)
-		name := path.Base(currentPath)
-
-		if dirs[dir] == nil {
-			dirs[dir] = make(map[string]bool)
-		}
-		dirs[dir][name] = true
-
-		// Check if current path is a symlink
-		fileInfo, err := os.Lstat(currentPath)
-		if err != nil {
-			logger.Debugf("Failed to stat %s: %s", currentPath, err)
-			break
-		}
-
-		// If it's not a symlink, we're done
-		if fileInfo.Mode()&os.ModeSymlink == 0 {
-			break
-		}
-
-		// Read the symlink target (step by step, not full resolution)
-		targetPath, err := os.Readlink(currentPath)
-		if err != nil {
-			logger.Debugf("Failed to read symlink %s: %s", currentPath, err)
-			break
-		}
-
-		// Make the target path absolute if it's relative
-		if !path.IsAbs(targetPath) {
-			targetPath = path.Join(path.Dir(currentPath), targetPath)
-		}
-
-		// If we got the same path, we've hit a circular symlink
-		if targetPath == currentPath {
-			logger.Warningf("Circular symlink detected at %s", currentPath)
-			break
-		}
-
-		currentPath = targetPath
-		logger.Debugf("Added symlink level %d to watch: %s -> %s", depth+1, filePath, currentPath)
-	}
-}
-
-func (d *dbConn) getDirsToWatch() map[string]map[string]bool {
-	dirs := make(map[string]map[string]bool)
+func (d *dbConn) getDirsToWatch() map[string]bool {
+	dirs := make(map[string]bool)
 
 	if d.passwordFile != "" {
-		d.addSymlinkChainToWatch(dirs, d.passwordFile)
+		dir := path.Dir(d.passwordFile)
+		dirs[dir] = true
 	}
 
 	if d.usernameFile != "" {
-		d.addSymlinkChainToWatch(dirs, d.usernameFile)
+		dir := path.Dir(d.usernameFile)
+		dirs[dir] = true
 	}
 
 	return dirs
+}
+
+func (d *dbConn) getCurrentCredentials() (string, string, error) {
+	username, err := d.getUsername()
+	if err != nil {
+		return "", "", err
+	}
+
+	password, err := d.getPassword()
+	if err != nil {
+		return "", "", err
+	}
+
+	return username, password, nil
 }
 
 func (d *dbConn) watchDbCredentials() {
@@ -210,15 +176,27 @@ func (d *dbConn) watchDbCredentials() {
 		logger.Errorf("Error initializing watcher %s", err)
 		return
 	}
+	defer watcher.Close()
 
 	for dir := range dirs {
 		if err := watcher.Add(dir); err != nil {
-			logger.Errorf("Unable to watch for %s %s", dir, err)
+			logger.Errorf("Unable to watch directory %s: %s", dir, err)
 			return
 		}
 	}
 
-	logger.Debugf("Start watching for DB credential files (dirs: %v)", dirs)
+	logger.Debugf("Start watching for DB credential changes in directories: %v", dirs)
+
+	// Get initial credentials
+	currentUsername, currentPassword, err := d.getCurrentCredentials()
+	if err != nil {
+		logger.Errorf("Failed to get initial credentials: %s", err)
+		return
+	}
+
+	const reloadDelay = 1 * time.Second
+	var reloadTimer *time.Timer
+	var reloadChan <-chan time.Time
 
 	for {
 		select {
@@ -230,27 +208,49 @@ func (d *dbConn) watchDbCredentials() {
 			dir := path.Dir(event.Name)
 			name := path.Base(event.Name)
 
-			logger.Debugf("File Changed on the Filesystem [dir: %s] [name: %s] [operation? %s]", dir, name, event.Op)
+			logger.Debugf("File Changed on the Filesystem [dir: %s] [name: %s] [operation: %s]", dir, name, event.Op)
 
-			files, ok := dirs[dir]
-			if !ok {
+			// Check if this event is in one of our watched directories
+			if _, ok := dirs[dir]; !ok {
 				continue
 			}
 
-			_, ok = files[name]
-			if !ok {
+			// Reset/start timer on any file system event
+			if reloadTimer != nil {
+				reloadTimer.Stop()
+			}
+			reloadTimer = time.NewTimer(reloadDelay)
+			reloadChan = reloadTimer.C
+
+		case <-reloadChan:
+			// Timer expired, check if credentials actually changed
+			newUsername, newPassword, err := d.getCurrentCredentials()
+			if err != nil {
+				logger.Errorf("Failed to read credentials during reload check: %s", err)
 				continue
 			}
 
-			logger.Infof("Relading DB credentials file: %s", event.Name)
-			if err := d.openAndVerify(); err != nil {
-				logger.Errorf("Error openning db connection during rotation %s", err)
+			if newUsername != currentUsername || newPassword != currentPassword {
+				logger.Infof("Credentials changed, reloading DB connection")
+				if err := d.openAndVerify(); err != nil {
+					logger.Errorf("Error opening db connection during rotation: %s", err)
+				} else {
+					logger.Infof("Successfully reloaded DB credentials")
+					currentUsername = newUsername
+					currentPassword = newPassword
+				}
+			} else {
+				logger.Debugf("File system event detected but credentials unchanged, skipping reload")
 			}
+
+			// Clear the channel to prevent it from being selected again
+			reloadChan = nil
+
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return
 			}
-			logger.Infof("Error reading from watcher %s", err)
+			logger.Errorf("Error reading from watcher: %s", err)
 		}
 	}
 }
