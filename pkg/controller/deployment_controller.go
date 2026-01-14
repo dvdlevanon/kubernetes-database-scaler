@@ -391,7 +391,7 @@ func (r *DeploymentReconciler) Run(cleaner *cleaner.Cleaner) {
 	for deploy := range r.removeDeploys {
 		key := types.NamespacedName{
 			Namespace: r.deploymentNamespace,
-			Name:      deploy,
+			Name:      buildDeploymentName(r.deploymentName, deploy),
 		}
 
 		deployment := appsv1.Deployment{}

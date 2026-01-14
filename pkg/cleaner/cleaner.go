@@ -45,8 +45,8 @@ func (c *Cleaner) periodicClean() {
 	for deploy, lastSeen := range c.lastSeenMap {
 		threshold := time.Now().Add(-c.cleanInterval)
 		if lastSeen.Before(threshold) {
-			logger.Info("About to remove stale deploy %s", deploy)
-			// c.removeChannel <- deploy
+			logger.Infof("About to remove stale deploy %s", deploy)
+			c.removeChannel <- deploy
 		}
 	}
 }
