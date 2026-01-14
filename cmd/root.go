@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"dvdlevanon/kubernetes-database-scaler/pkg/cleaner"
 	"dvdlevanon/kubernetes-database-scaler/pkg/controller"
 	"dvdlevanon/kubernetes-database-scaler/pkg/tablewatch"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/op/go-logging"
@@ -102,14 +104,14 @@ func setupVpaController(manager manager.Manager) (*controller.VpaReconciler, err
 	return controller, nil
 }
 
-func setupDeploymentController(manager manager.Manager) (*controller.DeploymentReconciler, error) {
+func setupDeploymentController(manager manager.Manager, removeDeploys <-chan string) (*controller.DeploymentReconciler, error) {
 	originalDeploymentNamespace := viper.GetString("original-deployment-namespace")
 	originalDeploymentName := viper.GetString("original-deployment-name")
 	targetDeploymentName := viper.GetString("target-deployment-name")
 	environments := splitEnvironmentVariable(viper.GetStringSlice("environment"))
 	excludeLabels := splitEnvironmentVariable(viper.GetStringSlice("exclude-label"))
 	controller, err := controller.New(manager.GetClient(),
-		originalDeploymentNamespace, originalDeploymentName, targetDeploymentName, environments, excludeLabels)
+		originalDeploymentNamespace, originalDeploymentName, targetDeploymentName, environments, excludeLabels, removeDeploys)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +139,14 @@ func watch() error {
 		return err
 	}
 
-	deploymentController, err := setupDeploymentController(manager)
+	removeDeploys := make(chan string)
+	checkInterval := viper.GetInt("check-interval")
+	targetDeploymentName := viper.GetString("target-deployment-name")
+	cleanInterval := time.Duration(checkInterval) * 3 * time.Second
+	cleaner := cleaner.NewCleaner(cleanInterval, targetDeploymentName, removeDeploys)
+	go cleaner.Run()
+
+	deploymentController, err := setupDeploymentController(manager, removeDeploys)
 	if err != nil {
 		return err
 	}
@@ -148,9 +157,11 @@ func watch() error {
 	}
 
 	go manager.Start(ctrl.SetupSignalHandler())
+	go deploymentController.Run(cleaner)
 
 	for row := range rows {
 		deploymentController.OnRow(row)
+		cleaner.OnRow(row)
 
 		if vpaController != nil {
 			vpaController.OnRow(row)

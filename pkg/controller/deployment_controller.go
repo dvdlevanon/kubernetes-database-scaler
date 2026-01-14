@@ -2,9 +2,11 @@ package controller
 
 import (
 	"context"
+	"dvdlevanon/kubernetes-database-scaler/pkg/cleaner"
 	"dvdlevanon/kubernetes-database-scaler/pkg/tablewatch"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/op/go-logging"
 	appsv1 "k8s.io/api/apps/v1"
@@ -29,6 +31,7 @@ type DeploymentReconciler struct {
 	deploymentColumnName      string
 	environmentsDefinitionMap map[string]string
 	excludeLabels             []string
+	removeDeploys             <-chan string
 }
 
 func buildEnvironmentDefinitionMap(environments []string) (map[string]string, error) {
@@ -46,7 +49,7 @@ func buildEnvironmentDefinitionMap(environments []string) (map[string]string, er
 }
 
 func New(client client.Client, deploymentNamespace string, deploymentName string,
-	deploymentColumnName string, environments []string, excludeLabels []string) (*DeploymentReconciler, error) {
+	deploymentColumnName string, environments []string, excludeLabels []string, removeDeploys <-chan string) (*DeploymentReconciler, error) {
 
 	if deploymentName == "" {
 		return nil, fmt.Errorf("deployment name is empty")
@@ -72,6 +75,7 @@ func New(client client.Client, deploymentNamespace string, deploymentName string
 		deploymentColumnName:      deploymentColumnName,
 		environmentsDefinitionMap: environmentsDefinitionMap,
 		excludeLabels:             excludeLabels,
+		removeDeploys:             removeDeploys,
 	}, nil
 }
 
@@ -364,4 +368,41 @@ func (r *DeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&appsv1.Deployment{}).
 		Complete(r)
+}
+
+func (r *DeploymentReconciler) Run(cleaner *cleaner.Cleaner) {
+	for {
+		deploys, err := r.listDuplicatedDeployments(context.TODO())
+		if err == nil {
+			for _, dep := range deploys {
+				deployName := dep.ObjectMeta.Annotations[DEPLOYMENT_ID_ANNOTATION_NAME]
+				cleaner.OnDeploy(deployName)
+			}
+			logger.Infof("Added %d initial deployments", len(deploys))
+			break
+		} else {
+			logger.Errorf("Unable to get initial deployments %s", err)
+			time.Sleep(time.Second)
+		}
+	}
+
+	logger.Infof("Starting deploy remove routine")
+
+	for deploy := range r.removeDeploys {
+		key := types.NamespacedName{
+			Namespace: r.deploymentNamespace,
+			Name:      deploy,
+		}
+
+		deployment := appsv1.Deployment{}
+		if err := r.Get(context.TODO(), key, &deployment); err != nil {
+			logger.Errorf("Unable to get deployment %s %s", deploy, err)
+			continue
+		}
+
+		if err := r.Delete(context.TODO(), &deployment); err != nil {
+			logger.Errorf("Unable to remove deployment %s %s", deploy, err)
+			continue
+		}
+	}
 }
